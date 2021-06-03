@@ -6,4 +6,5 @@ mpmath
 tox
 black
 isort
+jupyter
 -e .

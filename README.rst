@@ -1,4 +1,4 @@
-DeepBurn
+deepburn
 
 Package to analyze isotopic burnup solvers
 
