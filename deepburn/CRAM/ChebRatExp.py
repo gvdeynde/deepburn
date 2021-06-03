@@ -22,7 +22,7 @@ class ChebRatExp:
         order: int
             The order of the approximation
         rinf: float
-            The absolute error of the approximation at $-\infty$
+            The absolute error of the approximation at $-\\infty$
         alpha: ndarray
             1D array of size `order` containing data with `complex` type
         theta: ndarray
@@ -56,11 +56,18 @@ class ChebRatExpCollection:
         """
         self._origins = dict()
         self._orders = dict()
-        self._approx = list()
+        self.approx = list()
 
         if cras:
-            for cra in cras:
-                self.append(cra)
+            if isinstance(cras, list):
+                for cra in cras:
+                    self.append(cra)
+            elif isinstance(cras, ChebRatExp):
+                self.append(cras)
+            else:
+                raise TypeError(
+                    "ChebRatExpCollection requires ChebRatExp object or a list of ChebRatExp objects"
+                )
 
     @property
     def origins(self):
@@ -80,8 +87,8 @@ class ChebRatExpCollection:
             origin = cra.origin
             order = cra.order
 
-            # Add the new cra to the _approx list
-            self._approx.append(cra)
+            # Add the new cra to the approx list
+            self.approx.append(cra)
 
             # Add the origin of the case to the dictionary, with link to the object
             if origin in self._origins:
@@ -100,7 +107,7 @@ class ChebRatExpCollection:
 
     def __len__(self):
         """ int: Return the number of items in the collection."""
-        return len(self._approx)
+        return len(self.approx)
 
     def tofile(self, fname, mode="w"):
         """ None: Dump the collection to a text file.
@@ -117,7 +124,7 @@ class ChebRatExpCollection:
         """
         modestr = mode + "t"
         with open(fname, modestr) as fh:
-            for cra in self._approx:
+            for cra in self.approx:
                 fh.write(str(asdict(cra)) + "\n")
 
     def fromfile(self, fname):
