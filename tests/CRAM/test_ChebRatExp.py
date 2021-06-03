@@ -4,7 +4,9 @@
 
 import pytest
 
-from 
+from deepburn.CRAM.ChebRatExp import ChebRatExp, ChebRatExpCollection
+
 def test_init():
-    c = Cheb
+    c = ChebRatExp()
+    assert(isinstance(c, ChebRatExp))
 

@@ -4,7 +4,7 @@
 
 import pytest
 
-from deepburn import isotope
+from deepburn.tools import isotope
 
 
 @pytest.mark.parametrize(
