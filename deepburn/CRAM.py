@@ -27,10 +27,6 @@ Carathedory-Fejer:
     Journal of Nuclear Engineering, to be submitted.
 """
 
-""" Module variable """
-cras_literature = CRAC()
-cras_literature.fromfile('cras_literature.dat')
-
 
 from dataclasses import dataclass, asdict
 import mpmath as mp
@@ -354,3 +350,10 @@ class CRAC:
             crastrs = fh.readlines()
             for crastr in crastrs:
                 self.append(CRA(**eval(crastr)))
+
+
+
+""" Module variable """
+cras_literature = CRAC()
+cras_literature.fromfile('cras_literature.dat')
+
