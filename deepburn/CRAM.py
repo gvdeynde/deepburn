@@ -1,20 +1,44 @@
 # -*- coding: utf-8 -*-
 """
-This module provides the Carathéodory-Fejér algorithm to calculate the Partial
-Fraction Decomposition representation of the best rational approximation of the
-exponential function on the negative real axis.
+This module provides tools to generate and use Chebyshev Rational
+Approximations (CRAs) for the exponential function on the negative real axis.
 
-The algorithm is a Python implementation in arbitrary precision of the MATLAB
-script given in
+CRAs published in literature are available:
 
-    T. Schmelzer and L. N. Trefethen, “Evaluating matrix functions for exponential integrators via Carathéodory–Fejér approximation and contour integrals,” Electronic Transactions on Numerical Analysis, vol. 29, pp. 1–18, 2007.
+Origins
+-------
+Pusa:
+     M. Pusa, “Correction to Partial Fraction Decomposition Coefficients
+     for Chebyshev Rational Approximation on the Negative Real Axis,” arXiv,
+     2012, [Online]. Available: https://arxiv.org/abs/1206.2880v1.
+
+Calvin:
+    O. Calvin, S. Schunert, and B. Ganapol, “Global error analysis of the
+    Chebyshev rational approximation method,” Annals of Nuclear Energy, vol.
+    150, p. 107828, 2021, doi: 10.1016/j.anucene.2020.107828.
+
+Zhang:
+     B. Zhang, X. Yuan, Y. Zhang, H. Tang, and L. Cao, “Development of
+     a versatile depletion code AMAC,” Annals of Nuclear Energy, vol. 143,
+     p. 107446, 2020, doi: 10.1016/j.anucene.2020.107446.
+
+Carathedory-Fejer:
+    G. Van den Eynde, "Validated CRAM coefficients for depletion calculations",
+    Journal of Nuclear Engineering, to be submitted.
 """
 
-import numpy as np
+""" Module variable """
+cras_literature = CRAC()
+cras_literature.fromfile('cras_literature.dat')
+
+
+from dataclasses import dataclass, asdict
 import mpmath as mp
+import numpy as np
 from scipy.linalg import hankel
 
-def fft(yg, inverse=False):
+
+def _fft(yg, inverse=False):
     """
     Modified version from the apfft package:
 
@@ -160,7 +184,7 @@ def mpCaratheodoryFejer(n, verbose=False, dps = 30, K =75, nf =1024):
         scale = mp.mpf('9')
         if verbose: print('1. Calculating Chebyshev nodes')
         F = mpexp(scale*(t-one)/(t+one+mp.mp.eps))
-        c = mpreal(fft(F))/nf
+        c = mpreal(_fft(F))/nf
         if verbose: print('2. Building Hankel matrix')
         f = polyval(c[:K+1][::-1],w)
         h = hankel(c[1:K+1])
@@ -171,15 +195,15 @@ def mpCaratheodoryFejer(n, verbose=False, dps = 30, K =75, nf =1024):
         v = V[n,:]
         if verbose: print('4. Do FFTs')
         zz = int(nf-K)*[mp.mpf('0')]
-        b = fft(np.concatenate((u, zz)))/fft(np.concatenate((v, zz)))
+        b = _fft(np.concatenate((u, zz)))/_fft(np.concatenate((v, zz)))
         rt = f-s*w**K*b
-        rtc = mpreal(fft(rt))/nf
+        rtc = mpreal(_fft(rt))/nf
         if verbose: print('5. Start root finding')
         zr = np.array(mp.polyroots(v, maxsteps=20000))
         qk = zr[mpfabs(zr)>one]
         qc = np.poly(qk)
         pt = rt*polyval(qc,w)
-        ptc1 = mpreal(fft(pt)/nf)
+        ptc1 = mpreal(_fft(pt)/nf)
         ptc = ptc1[n::-1]
         ck = 0*qk
         if verbose: print('6. Start poles/residu')
@@ -196,3 +220,137 @@ def mpCaratheodoryFejer(n, verbose=False, dps = 30, K =75, nf =1024):
         rinf = mpreal(one/mp.mpf('2')*(one + np.sum(ck/zk))).item()
 
     return zk, ck, rinf
+
+
+@dataclass(frozen=True)
+class CRA:
+    """ unmutable data class to hold information on a CRA
+
+        Attributes
+        ----------
+        origin: str
+            The origin of the approximation, for example "Pusa"
+        order: int
+            The order of the approximation
+        rinf: float
+            The absolute error of the approximation at $-\\infty$
+        alpha: ndarray
+            1D array of size `order` containing data with `complex` type
+        theta: ndarray
+            1D array of size `order` containing data with `complex` type
+    """
+
+    origin: str
+    order: int
+    rinf: float
+    alpha: np.ndarray
+    theta: np.ndarray
+
+
+class CRAC:
+    """ class to thold a collection of Chebyshev Rational Approximations.
+
+        This class can hold a collection of CRAs to the exponential function on the
+        negative real axis, held in a CRA dataclass. It provides a
+        constructor, an append function and a dump to and real from file using the
+        dict representation of a dataclass.
+    """
+
+    def __init__(self, cras=None):
+        """ Initialize a CRA collection using a list of CRA items.
+
+        Parameters
+        ----------
+        cras : :obj:`list` of :obj:`CRA`, optional
+            list of instances of CRA to be added to the collection at
+            its creation.
+        """
+        self._origins = dict()
+        self._orders = dict()
+        self.approx = list()
+
+        if cras:
+            if isinstance(cras, list):
+                for cra in cras:
+                    self.append(cra)
+            elif isinstance(cras, CRA):
+                self.append(cras)
+            else:
+                raise TypeError(
+                    "CRAC requires CRA object or a list of CRA objects"
+                )
+
+    @property
+    def origins(self):
+        """ list: Returns a list of the different CRA origins in the
+        collection."""
+        return list(self._origins.keys())
+
+    @property
+    def orders(self):
+        """ list: Returns a list of the different CRA orders in the
+        collection."""
+        return list(self._orders.keys())
+
+    def append(self, cra):
+        """ None: Appends a CRA to the collection."""
+        if isinstance(cra, CRA):
+            origin = cra.origin
+            order = cra.order
+
+            # Add the new cra to the approx list
+            self.approx.append(cra)
+
+            # Add the origin of the case to the dictionary, with link to the object
+            if origin in self._origins:
+                self._origins[origin].append(cra)
+            else:
+                self._origins[origin] = [cra]
+
+            # Add the order of the case to the dictionary, with link to the object
+            if order in self._orders:
+                self._orders[order].append(cra)
+            else:
+                self._orders[order] = [cra]
+
+        else:
+            raise TypeError("I can only handle objects of type CRA")
+
+    def __len__(self):
+        """ int: Return the number of items in the collection."""
+        return len(self.approx)
+
+    def tofile(self, fname, mode="w"):
+        """ None: Dump the collection to a text file.
+
+        This function dumps the collection to a text file by converting the
+        dataclass CRA instances to a corresponding `dict`.
+
+        Parameters
+        ----------
+        fname: str
+            Filename for the output file.
+        mode: str, default 'w'
+            Single character string, either 'w' (default) or 'a'
+        """
+        modestr = mode + "t"
+        with open(fname, modestr) as fh:
+            for cra in self.approx:
+                fh.write(str(asdict(cra)) + "\n")
+
+    def fromfile(self, fname):
+        """ None: Read a collection from a text file.
+
+        This function reads a collection from a text file by converting the
+        dictionaries (separated by a newline) to instances of the dataclass
+        CRA.
+
+        Parameters
+        ----------
+        fname: str
+            Filename for the input file.
+        """
+        with open(fname, "rt") as fh:
+            crastrs = fh.readlines()
+            for crastr in crastrs:
+                self.append(CRA(**eval(crastr)))
