@@ -29,10 +29,12 @@ Carathedory-Fejer:
 
 
 from dataclasses import dataclass, asdict
+import re
+import importlib.resources as pkg_resources
 import mpmath as mp
 import numpy as np
 from scipy.linalg import hankel
-
+from . import data
 
 def _fft(yg, inverse=False):
     """
@@ -64,21 +66,27 @@ def _fft(yg, inverse=False):
     # Perform an O[N^2] DFT on all length-N_min sub-problems at once
     n = np.array(mp.arange(N_min))
     k = n[:, None]
-    A = ifac*mp.mpc(2j) * mp.pi * n * k / mp.mpf(N_min)
+    A = ifac * mp.mpc(2j) * mp.pi * n * k / mp.mpf(N_min)
     M = exp(A)
     X = M.dot(yg.reshape((N_min, -1)))
     while X.shape[0] < N:
-        X_even = X[:, :X.shape[1] // 2]
-        X_odd = X[:, X.shape[1] // 2:]
-        A = ifac*mp.mpc(1j) * mp.pi * np.array(mp.arange(X.shape[0])) / mp.mpf(X.shape[0])
+        X_even = X[:, : X.shape[1] // 2]
+        X_odd = X[:, X.shape[1] // 2 :]
+        A = (
+            ifac
+            * mp.mpc(1j)
+            * mp.pi
+            * np.array(mp.arange(X.shape[0]))
+            / mp.mpf(X.shape[0])
+        )
         factor = exp(A)[:, None]
-        X = np.vstack([X_even + factor * X_odd,
-                       X_even - factor * X_odd])
+        X = np.vstack([X_even + factor * X_odd, X_even - factor * X_odd])
     # build-up each level of the recursive calculation all at once
     if inverse:
-        return X.ravel()/mp.mpf(N)
+        return X.ravel() / mp.mpf(N)
     else:
         return X.ravel()
+
 
 def CaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
     """ Wrapper around mpCaratheodoryFejer to return ndarrays of complex type.
@@ -108,6 +116,7 @@ def CaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
     rinf: float
         Asymptotic error of the approximation
     """
+
     def _tocomplex(x):
         return np.array(x, dtype=complex)
 
@@ -119,7 +128,8 @@ def CaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
 
     return zk, ck, rinf
 
-def mpCaratheodoryFejer(n, verbose=False, dps = 30, K =75, nf =1024):
+
+def mpCaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
     """ Calculates the best rational approxmation to exp(x) on negative real
     axis.
 
@@ -154,6 +164,7 @@ def mpCaratheodoryFejer(n, verbose=False, dps = 30, K =75, nf =1024):
     rinf: mp.mpf
         Asymptotic error of the approximation
     """
+
     def polyval(coeffs, x):
         x = np.asarray(x)
         res = np.asarray(x)
@@ -171,49 +182,55 @@ def mpCaratheodoryFejer(n, verbose=False, dps = 30, K =75, nf =1024):
 
     with mp.workdps(dps):
 
-        nf=mp.mpf(nf)
+        nf = mp.mpf(nf)
 
-        twopij = mp.mpc('0','2')*mp.pi
-        one = mp.mpf('1')
-        w = mpexp(twopij/nf*np.array(mp.arange(0,nf)))
+        twopij = mp.mpc("0", "2") * mp.pi
+        one = mp.mpf("1")
+        w = mpexp(twopij / nf * np.array(mp.arange(0, nf)))
         t = mpreal(w)
-        scale = mp.mpf('9')
-        if verbose: print('1. Calculating Chebyshev nodes')
-        F = mpexp(scale*(t-one)/(t+one+mp.mp.eps))
-        c = mpreal(_fft(F))/nf
-        if verbose: print('2. Building Hankel matrix')
-        f = polyval(c[:K+1][::-1],w)
-        h = hankel(c[1:K+1])
-        if verbose: print('3. Do SVD')
+        scale = mp.mpf("9")
+        if verbose:
+            print("1. Calculating Chebyshev nodes")
+        F = mpexp(scale * (t - one) / (t + one + mp.mp.eps))
+        c = mpreal(_fft(F)) / nf
+        if verbose:
+            print("2. Building Hankel matrix")
+        f = polyval(c[: K + 1][::-1], w)
+        h = hankel(c[1 : K + 1])
+        if verbose:
+            print("3. Do SVD")
         U, S, V = mp.svd_r(mp.matrix(h), full_matrices=True, compute_uv=True)
         s = S[n]
-        u = U[::-1,n]
-        v = V[n,:]
-        if verbose: print('4. Do FFTs')
-        zz = int(nf-K)*[mp.mpf('0')]
-        b = _fft(np.concatenate((u, zz)))/_fft(np.concatenate((v, zz)))
-        rt = f-s*w**K*b
-        rtc = mpreal(_fft(rt))/nf
-        if verbose: print('5. Start root finding')
+        u = U[::-1, n]
+        v = V[n, :]
+        if verbose:
+            print("4. Do FFTs")
+        zz = int(nf - K) * [mp.mpf("0")]
+        b = _fft(np.concatenate((u, zz))) / _fft(np.concatenate((v, zz)))
+        rt = f - s * w ** K * b
+        rtc = mpreal(_fft(rt)) / nf
+        if verbose:
+            print("5. Start root finding")
         zr = np.array(mp.polyroots(v, maxsteps=20000))
-        qk = zr[mpfabs(zr)>one]
+        qk = zr[mpfabs(zr) > one]
         qc = np.poly(qk)
-        pt = rt*polyval(qc,w)
-        ptc1 = mpreal(_fft(pt)/nf)
+        pt = rt * polyval(qc, w)
+        ptc1 = mpreal(_fft(pt) / nf)
         ptc = ptc1[n::-1]
-        ck = 0*qk
-        if verbose: print('6. Start poles/residu')
+        ck = 0 * qk
+        if verbose:
+            print("6. Start poles/residu")
         for k in range(n):
             q = qk[k]
-            q2 = np.poly(qk[qk!=q]);
-            ck[k]= np.polyval(ptc,q)/polyval(q2,q)
-        zk = scale*(qk-one)**2./(qk+one)**2
-        ck = mp.mpf('4')*ck*zk/(qk**2-one)
+            q2 = np.poly(qk[qk != q])
+            ck[k] = np.polyval(ptc, q) / polyval(q2, q)
+        zk = scale * (qk - one) ** 2.0 / (qk + one) ** 2
+        ck = mp.mpf("4") * ck * zk / (qk ** 2 - one)
         idx = np.argsort(mpimag(zk))
         zk = zk[idx]
         ck = ck[idx]
 
-        rinf = mpreal(one/mp.mpf('2')*(one + np.sum(ck/zk))).item()
+        rinf = mpreal(one / mp.mpf("2") * (one + np.sum(ck / zk))).item()
 
     return zk, ck, rinf
 
@@ -272,9 +289,7 @@ class CRAC:
             elif isinstance(cras, CRA):
                 self.append(cras)
             else:
-                raise TypeError(
-                    "CRAC requires CRA object or a list of CRA objects"
-                )
+                raise TypeError("CRAC requires CRA object or a list of CRA objects")
 
     @property
     def origins(self):
@@ -334,6 +349,25 @@ class CRAC:
             for cra in self.approx:
                 fh.write(str(asdict(cra)) + "\n")
 
+    def fromstring(self, crastr):
+        """ None: Read a collection from a text file.
+
+        This function reads a collection from a text file by converting the
+        dictionaries (separated by a newline) to instances of the dataclass
+        CRA.
+
+        Parameters
+        ----------
+        crastr: str
+            string containing dicts of the CRAs
+        """
+
+        cralist = re.findall(r'{[^}]*}',crastr)
+
+        for cra in cralist:
+            self.append(CRA(**eval(cra)))
+
+
     def fromfile(self, fname):
         """ None: Read a collection from a text file.
 
@@ -348,12 +382,19 @@ class CRAC:
         """
         with open(fname, "rt") as fh:
             crastrs = fh.readlines()
-            for crastr in crastrs:
-                self.append(CRA(**eval(crastr)))
+            fromstring(crastrs)
 
 
+class CRA_literature:
+    """ Class that only has a __call__ function to return the CRAs values from
+    literature.
+    """
+    def __init__(self):
+        cras_literature = CRAC()
+        crastr = pkg_resources.read_text(data, 'cras_literature.dat')
+        cras_literature.fromstring(crastr)
 
-""" Module variable """
-cras_literature = CRAC()
-cras_literature.fromfile('cras_literature.dat')
+    def __call__(self):
+        return self.cras_literature
 
+#cra_literature = CRA_literature()()
