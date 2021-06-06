@@ -36,6 +36,7 @@ import numpy as np
 from scipy.linalg import hankel
 from . import data
 
+
 def _fft(yg, inverse=False):
     """
     Modified version from the apfft package:
@@ -89,7 +90,7 @@ def _fft(yg, inverse=False):
 
 
 def CaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
-    """ Wrapper around mpCaratheodoryFejer to return ndarrays of complex type.
+    """Wrapper around mpCaratheodoryFejer to return ndarrays of complex type.
 
     This is wrapper around the multi-precision Caratheodory-Fejer routine to
     return np.ndarray's of complex type
@@ -130,7 +131,7 @@ def CaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
 
 
 def mpCaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
-    """ Calculates the best rational approxmation to exp(x) on negative real
+    """Calculates the best rational approxmation to exp(x) on negative real
     axis.
 
     This function calculations the best rational approximation to exp(x) on the
@@ -237,20 +238,20 @@ def mpCaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
 
 @dataclass(frozen=True)
 class CRA:
-    """ unmutable data class to hold information on a CRA
+    """unmutable data class to hold information on a CRA
 
-        Attributes
-        ----------
-        origin: str
-            The origin of the approximation, for example "Pusa"
-        order: int
-            The order of the approximation
-        rinf: float
-            The absolute error of the approximation at $-\\infty$
-        alpha: ndarray
-            1D array of size `order` containing data with `complex` type
-        theta: ndarray
-            1D array of size `order` containing data with `complex` type
+    Attributes
+    ----------
+    origin: str
+        The origin of the approximation, for example "Pusa"
+    order: int
+        The order of the approximation
+    rinf: float
+        The absolute error of the approximation at $-\\infty$
+    alpha: ndarray
+        1D array of size `order` containing data with `complex` type
+    theta: ndarray
+        1D array of size `order` containing data with `complex` type
     """
 
     origin: str
@@ -261,16 +262,16 @@ class CRA:
 
 
 class CRAC:
-    """ class to thold a collection of Chebyshev Rational Approximations.
+    """class to thold a collection of Chebyshev Rational Approximations.
 
-        This class can hold a collection of CRAs to the exponential function on the
-        negative real axis, held in a CRA dataclass. It provides a
-        constructor, an append function and a dump to and real from file using the
-        dict representation of a dataclass.
+    This class can hold a collection of CRAs to the exponential function on the
+    negative real axis, held in a CRA dataclass. It provides a
+    constructor, an append function and a dump to and real from file using the
+    dict representation of a dataclass.
     """
 
     def __init__(self, cras=None):
-        """ Initialize a CRA collection using a list of CRA items.
+        """Initialize a CRA collection using a list of CRA items.
 
         Parameters
         ----------
@@ -293,18 +294,18 @@ class CRAC:
 
     @property
     def origins(self):
-        """ list: Returns a list of the different CRA origins in the
+        """list: Returns a list of the different CRA origins in the
         collection."""
         return list(self._origins.keys())
 
     @property
     def orders(self):
-        """ list: Returns a list of the different CRA orders in the
+        """list: Returns a list of the different CRA orders in the
         collection."""
         return list(self._orders.keys())
 
     def append(self, cra):
-        """ None: Appends a CRA to the collection."""
+        """None: Appends a CRA to the collection."""
         if isinstance(cra, CRA):
             origin = cra.origin
             order = cra.order
@@ -327,12 +328,38 @@ class CRAC:
         else:
             raise TypeError("I can only handle objects of type CRA")
 
+    def __call__(self, origin, order):
+        """Function that returns a CRA from a certain origin and with a certain
+        order
+
+        Parameters
+        ----------
+        origin: str
+            name of the origin (like Pusa, Calvin)
+        order: int
+            order of the CRA
+
+        Returns
+        -------
+        Matching CRA
+        """
+
+        cras = self._origins[origin]
+
+        res = None
+        for cra in cras:
+            if cra.order == order:
+                res = cra
+                break
+
+        return res
+
     def __len__(self):
-        """ int: Return the number of items in the collection."""
+        """int: Return the number of items in the collection."""
         return len(self.approx)
 
     def tofile(self, fname, mode="w"):
-        """ None: Dump the collection to a text file.
+        """None: Dump the collection to a text file.
 
         This function dumps the collection to a text file by converting the
         dataclass CRA instances to a corresponding `dict`.
@@ -350,7 +377,7 @@ class CRAC:
                 fh.write(str(asdict(cra)) + "\n")
 
     def fromstring(self, crastr):
-        """ None: Read a collection from a text file.
+        """None: Read a collection from a text file.
 
         This function reads a collection from a text file by converting the
         dictionaries (separated by a newline) to instances of the dataclass
@@ -362,14 +389,13 @@ class CRAC:
             string containing dicts of the CRAs
         """
 
-        cralist = re.findall(r'{[^}]*}',crastr)
+        cralist = re.findall(r"\{[^}]*\}", crastr)
 
         for cra in cralist:
             self.append(CRA(**eval(cra)))
 
-
     def fromfile(self, fname):
-        """ None: Read a collection from a text file.
+        """None: Read a collection from a text file.
 
         This function reads a collection from a text file by converting the
         dictionaries (separated by a newline) to instances of the dataclass
@@ -381,20 +407,22 @@ class CRAC:
             Filename for the input file.
         """
         with open(fname, "rt") as fh:
-            crastrs = fh.readlines()
-            fromstring(crastrs)
+            crastrs = fh.read()
+            self.fromstring(crastrs)
 
 
 class CRA_literature:
-    """ Class that only has a __call__ function to return the CRAs values from
+    """Class that only has a __call__ function to return the CRAs values from
     literature.
     """
+
     def __init__(self):
         cras_literature = CRAC()
-        crastr = pkg_resources.read_text(data, 'cras_literature.dat')
+        crastr = pkg_resources.read_text(data, "cras_literature.dat")
         cras_literature.fromstring(crastr)
 
     def __call__(self):
         return self.cras_literature
 
-#cra_literature = CRA_literature()()
+
+# cra_literature = CRA_literature()()
