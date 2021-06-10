@@ -221,12 +221,13 @@ class CRA:
 
         if dps:
             mpexp = np.vectorize(mp.exp)
+            mpre = np.vectorize(mp.re)
 
             with mp.workdps(dps):
-                errorderiv = self.derivative(x, dps) - mpexp(x)
+                errorderiv = mpre(self.derivative(x, dps) - mpexp(x))
 
         else:
-            errorderiv = self.derivative(x) - np.exp(x)
+            errorderiv = np.real(self.derivative(x) - np.exp(x))
 
         return errorderiv
 
@@ -270,38 +271,46 @@ class CRA:
                     maxfev=100,
                 )[0]
                 if sol > -10000:  # arbitrary boundary
-                    sols[i] = float(sol)
+                    sols[i] = sol
 
             # Step 2: refine
             startvalsmp = np.unique(sols.round(decimals=10))[:-1]
 
             tol = mp.mpf("1e-20")
-            delta = mp.mpf("1e-1")
+            delta = mp.mpf("2e-2")
             one = mp.mpf("1")
 
             extrema = []
             for sv in startvalsmp:
                 svmp = mp.mpf(sv)
-                refined = mp.findroot(
-                    lambda x: self.errorderivative(x, dps),
-                    (svmp * (one - delta), svmp * (one + delta)),
-                    solver="muller",
-                    tol=tol,
-                )
-                extrema.append(refined)
+                left = svmp * (one - delta)
+                right = svmp * (one + delta)
+                if (
+                    self.errorderivative(left, dps).item()
+                    * self.errorderivative(right, dps).item()
+                    < 0
+                ):
+                    refined = mp.findroot(
+                        lambda x: self.errorderivative(x, dps),
+                        (svmp * (one - delta), svmp * (one + delta)),
+                        solver="anderson",
+                        tol=tol,
+                    )
+
+                    extrema.append(refined)
 
             # Step 3: prune
             result = []
             for ext in extrema:
                 present = False
                 for r in result:
-                    present = mp.almosteq(ext, r, abs_eps=tol)
+                    present = mp.almosteq(ext, r, rel_eps=mp.mpf("1e-14"))
                     if present:
                         break
                 if not present:
-                    result.append(ext)
+                    result.append(float(ext))
 
-        return tofloat(result)
+        return np.array(result, dtype=float)
 
     @property
     def extrema(self):
@@ -314,6 +323,9 @@ class CRA:
         if self._extremavals is None:
             self._extremavals = self.error(self.extrema)
         return self._extremavals
+
+    def ODEsolver(A, t):
+        print("to implement")
 
 
 class CRAC:
