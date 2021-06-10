@@ -371,6 +371,14 @@ class CRAC:
         collection."""
         return list(self._orders.keys())
 
+    @property
+    def collection(self):
+        """list[tuple]: Returns a list of all CRA in the collection
+
+        Each item in the list is a tuple, (origin, order)
+        """
+        return [(a.origin, a.order) for a in self.approx]
+
     def append(self, cra):
         """None: Appends a CRA to the collection."""
         if isinstance(cra, CRA):
