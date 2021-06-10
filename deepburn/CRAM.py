@@ -7,34 +7,480 @@ CRAs published in literature are available:
 
 Origins
 -------
-Pusa:
+Pusa2012:
      M. Pusa, “Correction to Partial Fraction Decomposition Coefficients
      for Chebyshev Rational Approximation on the Negative Real Axis,” arXiv,
      2012, [Online]. Available: https://arxiv.org/abs/1206.2880v1.
 
-Calvin:
+Calvin2021:
     O. Calvin, S. Schunert, and B. Ganapol, “Global error analysis of the
     Chebyshev rational approximation method,” Annals of Nuclear Energy, vol.
     150, p. 107828, 2021, doi: 10.1016/j.anucene.2020.107828.
 
-Zhang:
+Zhang2020:
      B. Zhang, X. Yuan, Y. Zhang, H. Tang, and L. Cao, “Development of
      a versatile depletion code AMAC,” Annals of Nuclear Energy, vol. 143,
      p. 107446, 2020, doi: 10.1016/j.anucene.2020.107446.
 
-Carathedory-Fejer:
+VandenEynde2021:
     G. Van den Eynde, "Validated CRAM coefficients for depletion calculations",
     Journal of Nuclear Engineering, to be submitted.
 """
 
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 import re
 import importlib.resources as pkg_resources
 import mpmath as mp
 import numpy as np
 from scipy.linalg import hankel
+from scipy.optimize import fsolve
 from . import data
+
+
+@dataclass
+class CRA:
+    """unmutable data class to hold information on a CRA
+
+    Attributes
+    ----------
+    origin: str
+        The origin of the approximation, for example "Pusa"
+    order: int
+        The order of the approximation
+    rinf: float
+        The absolute error of the approximation at $-\\infty$
+    alpha: ndarray
+        1D array of size `order` containing data with `complex` type
+    theta: ndarray
+        1D array of size `order` containing data with `complex` type
+    """
+
+    origin: str
+    order: int
+    rinf: float
+    alpha: np.ndarray
+    theta: np.ndarray
+    _extrema: np.ndarray = field(init=False, repr=False, default=None)
+    _extremavals: np.ndarray = field(init=False, repr=False, default=None)
+
+    def __call__(self, x, dps=None):
+        """Evaluates the CRA in x.
+
+        Parameters
+        ----------
+        x: ndarray
+            the array where the CRA should be evaluated
+        dps: int or None
+            if None, double precision (complex) arithmetic is used
+            if int, mpmath arbitrary precision arithmetic is used with working
+            dps set to dps
+
+        Returns
+        -------
+        ndarray
+            the resulting evaluation as an array of floats or mpf
+        """
+
+        if dps:
+            mpreal = np.vectorize(mp.re)
+
+            with mp.workdps(dps):
+                res = mp.mpc("0") * np.ones_like(x)
+                xx = mp.mpf("1") * x
+
+                for i in range(self.order // 2):
+                    res += mp.mpc(self.alpha[i]) / (xx - mp.mpc(self.theta[i]))
+
+                res *= mp.mpf("2")
+
+                if self.order % 2:
+                    res += mp.mpc(self.alpha[-1]) / (xx - mp.mpc(self.theta[-1]))
+
+                res += mp.mpc(self.rinf) * np.ones_like(x)
+
+                res = mpreal(res)
+
+        else:
+            res = np.zeros_like(x, dtype=complex)
+
+            for i in range(self.order // 2):
+                res += self.alpha[i] / (x - self.theta[i])
+
+            res *= 2
+
+            if self.order % 2:
+                res += self.alpha[-1] / (x - self.theta[-1])
+
+            res += self.rinf
+
+            res = np.real(res)
+
+        return res
+
+    def derivative(self, x, dps=None):
+        """Evaluates the derivative of the CRA in x.
+
+        Parameters
+        ----------
+        x: ndarray
+            the array where the CRA should be evaluated
+        dps: int or None
+            if None, double precision (complex) arithmetic is used
+            if int, mpmath arbitrary precision arithmetic is used with working
+            dps set to dps
+
+        Returns
+        -------
+        ndarray
+            the resulting evaluation as an array of floats or mpf
+        """
+
+        if dps:
+            mpreal = np.vectorize(mp.re)
+
+            with mp.workdps(dps):
+                res = mp.mpc("0") * np.ones_like(x)
+                xx = mp.mpf("1") * x
+
+                for i in range(self.order // 2):
+                    res -= mp.mpc(self.alpha[i]) / (
+                        (xx - mp.mpc(self.theta[i])) * (xx - mp.mpc(self.theta[i]))
+                    )
+
+                res *= mp.mpf("2")
+
+                if self.order % 2:
+                    res -= mp.mpc(self.alpha[-1]) / (
+                        (xx - mp.mpc(self.theta[-1])) * (xx - mp.mpc(self.theta[-1]))
+                    )
+
+                res = mpreal(res)
+
+        else:
+            res = np.zeros_like(x, dtype=complex)
+
+            for i in range(self.order // 2):
+                res -= self.alpha[i] / ((x - self.theta[i]) * (x - self.theta[i]))
+
+            res *= 2
+
+            if self.order % 2:
+                res -= self.alpha[-1] / ((x - self.theta[-1]) * (x - self.theta[-1]))
+
+            res = np.real(res)
+
+        return res
+
+    def error(self, x, dps=None):
+        """Evaluates the error between the CRA and exp in x.
+
+        Parameters
+        ----------
+        x: ndarray
+            the array where the error should be evaluated
+        dps: int or None
+            if None, double precision (complex) arithmetic is used
+            if int, mpmath arbitrary precision arithmetic is used with working
+            dps set to dps
+
+        Returns
+        -------
+        ndarray
+            the resulting error as an array of floats or mpf
+        """
+
+        if dps:
+            mpexp = np.vectorize(mp.exp)
+
+            with mp.workdps(dps):
+                error = self(x, dps) - mpexp(x)
+
+        else:
+            error = self(x) - np.exp(x)
+
+        return error
+
+    def errorderivative(self, x, dps=None):
+        """Evaluates the derivative of the error between the CRA and exp in x.
+
+        Parameters
+        ----------
+        x: ndarray
+            the array where the error should be evaluated
+        dps: int or None
+            if None, double precision (complex) arithmetic is used
+            if int, mpmath arbitrary precision arithmetic is used with working
+            dps set to dps
+
+        Returns
+        -------
+        ndarray
+            the resulting derivative of the error as an array of floats or mpf
+        """
+
+        if dps:
+            mpexp = np.vectorize(mp.exp)
+
+            with mp.workdps(dps):
+                errorderiv = self.derivative(x, dps) - mpexp(x)
+
+        else:
+            errorderiv = self.derivative(x) - np.exp(x)
+
+        return errorderiv
+
+    def _calculate_extrema(self):
+        """This function calculates the extrema of the CRA error function.
+
+        This function calculates the extrema of the CRA error function.
+        A property of the CRA is the equioscillatory behaviour of the error
+        function. Because the CRA is derived using the transformation to map
+        $[-1,+1]$ on $(-\\infty, 0]$, the equioscillatory behaviour is visible
+        in a logarithmic scale.
+
+        The code uses a three step approach:
+            1. Get some initial guesses from a logarithmic spread of starting
+            values using fsolve on derivative of the error function
+            2. Refine the solutions using arbitrary precision arithmetic
+            3. Prune the results to be left with 2*order extrema
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        ndarray holding the extrema in double precision
+        """
+
+        dps = 100  # 100 is rather arbitray but should be sufficient
+        with mp.workdps(dps):
+            mppower = np.vectorize(mp.power)
+            tofloat = lambda x: np.array(x, dtype=float)
+
+            # Step 1: initial guesses
+            startvals = -mppower(mp.mpf("10"), np.linspace(5, -5, 101))
+            sols = np.zeros_like(startvals, dtype=float)
+            for i, sv in enumerate(startvals):
+                sol = fsolve(
+                    lambda x: tofloat(self.errorderivative(x, dps)),
+                    float(sv),
+                    xtol=1e-5,
+                    maxfev=100,
+                )[0]
+                if sol > -10000:  # arbitrary boundary
+                    sols[i] = float(sol)
+
+            # Step 2: refine
+            startvalsmp = np.unique(sols.round(decimals=10))[:-1]
+
+            tol = mp.mpf("1e-20")
+            delta = mp.mpf("1e-1")
+            one = mp.mpf("1")
+
+            extrema = []
+            for sv in startvalsmp:
+                svmp = mp.mpf(sv)
+                refined = mp.findroot(
+                    lambda x: self.errorderivative(x, dps),
+                    (svmp * (one - delta), svmp * (one + delta)),
+                    solver="muller",
+                    tol=tol,
+                )
+                extrema.append(refined)
+
+            # Step 3: prune
+            result = []
+            for ext in extrema:
+                present = False
+                for r in result:
+                    present = mp.almosteq(ext, r, abs_eps=tol)
+                    if present:
+                        break
+                if not present:
+                    result.append(ext)
+
+        return tofloat(result)
+
+    @property
+    def extrema(self):
+        if self._extrema is None:
+            self._extrema = self._calculate_extrema()
+        return self._extrema
+
+    @property
+    def extremavals(self):
+        if self._extremavals is None:
+            self._extremavals = self.error(self.extrema)
+        return self._extremavals
+
+
+class CRAC:
+    """class to thold a collection of Chebyshev Rational Approximations.
+
+    This class can hold a collection of CRAs to the exponential function on the
+    negative real axis, held in a CRA dataclass. It provides a
+    constructor, an append function and a dump to and real from file using the
+    dict representation of a dataclass.
+    """
+
+    def __init__(self, cras=None):
+        """Initialize a CRA collection using a list of CRA items.
+
+        Parameters
+        ----------
+        cras : :obj:`list` of :obj:`CRA`, optional
+            list of instances of CRA to be added to the collection at
+            its creation.
+        """
+        self._origins = dict()
+        self._orders = dict()
+        self.approx = list()
+
+        if cras:
+            if isinstance(cras, list):
+                for cra in cras:
+                    self.append(cra)
+            elif isinstance(cras, CRA):
+                self.append(cras)
+            else:
+                raise TypeError("CRAC requires CRA object or a list of CRA objects")
+
+    @property
+    def origins(self):
+        """list: Returns a list of the different CRA origins in the
+        collection."""
+        return list(self._origins.keys())
+
+    @property
+    def orders(self):
+        """list: Returns a list of the different CRA orders in the
+        collection."""
+        return list(self._orders.keys())
+
+    def append(self, cra):
+        """None: Appends a CRA to the collection."""
+        if isinstance(cra, CRA):
+            origin = cra.origin
+            order = cra.order
+
+            # Add the new cra to the approx list
+            self.approx.append(cra)
+
+            # Add the origin of the case to the dictionary, with link to the object
+            if origin in self._origins:
+                self._origins[origin].append(cra)
+            else:
+                self._origins[origin] = [cra]
+
+            # Add the order of the case to the dictionary, with link to the object
+            if order in self._orders:
+                self._orders[order].append(cra)
+            else:
+                self._orders[order] = [cra]
+
+        else:
+            raise TypeError("I can only handle objects of type CRA")
+
+    def __call__(self, origin, order):
+        """Function that returns a CRA from a certain origin and with a certain
+        order
+
+        Parameters
+        ----------
+        origin: str
+            name of the origin (like Pusa, Calvin)
+        order: int
+            order of the CRA
+
+        Returns
+        -------
+        Matching CRA
+        """
+
+        cras = self._origins[origin]
+
+        res = None
+        for cra in cras:
+            if cra.order == order:
+                res = cra
+                break
+
+        return res
+
+    def __len__(self):
+        """int: Return the number of items in the collection."""
+        return len(self.approx)
+
+    def tofile(self, fname, mode="w"):
+        """None: Dump the collection to a text file.
+
+        This function dumps the collection to a text file by converting the
+        dataclass CRA instances to a corresponding `dict`.
+
+        Parameters
+        ----------
+        fname: str
+            Filename for the output file.
+        mode: str, default 'w'
+            Single character string, either 'w' (default) or 'a'
+        """
+        modestr = mode + "t"
+        with open(fname, modestr) as fh:
+            for cra in self.approx:
+                fh.write(str(asdict(cra)) + "\n")
+
+    def fromstring(self, crastr):
+        """None: Read a collection from a text file.
+
+        This function reads a collection from a text file by converting the
+        dictionaries (separated by a newline) to instances of the dataclass
+        CRA.
+
+        Parameters
+        ----------
+        crastr: str
+            string containing dicts of the CRAs
+        """
+
+        cralist = re.findall(r"\{[^}]*\}", crastr)
+
+        for cra in cralist:
+            self.append(CRA(**eval(cra)))
+
+    def fromfile(self, fname):
+        """None: Read a collection from a text file.
+
+        This function reads a collection from a text file by converting the
+        dictionaries (separated by a newline) to instances of the dataclass
+        CRA.
+
+        Parameters
+        ----------
+        fname: str
+            Filename for the input file.
+        """
+        with open(fname, "rt") as fh:
+            crastrs = fh.read()
+            self.fromstring(crastrs)
+
+
+class CRA_literature:
+    """Class that only has a __call__ function to return the CRAs values from
+    literature.
+    """
+
+    def __init__(self):
+        self.cras_literature = CRAC()
+        crastr = pkg_resources.read_text(data, "cras_literature.dat")
+        self.cras_literature.fromstring(crastr)
+
+    def __call__(self):
+        return self.cras_literature
+
+
+cras_literature = CRA_literature()()
 
 
 def _fft(yg, inverse=False):
@@ -234,195 +680,3 @@ def mpCaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
         rinf = mpreal(one / mp.mpf("2") * (one + np.sum(ck / zk))).item()
 
     return zk, ck, rinf
-
-
-@dataclass(frozen=True)
-class CRA:
-    """unmutable data class to hold information on a CRA
-
-    Attributes
-    ----------
-    origin: str
-        The origin of the approximation, for example "Pusa"
-    order: int
-        The order of the approximation
-    rinf: float
-        The absolute error of the approximation at $-\\infty$
-    alpha: ndarray
-        1D array of size `order` containing data with `complex` type
-    theta: ndarray
-        1D array of size `order` containing data with `complex` type
-    """
-
-    origin: str
-    order: int
-    rinf: float
-    alpha: np.ndarray
-    theta: np.ndarray
-
-
-class CRAC:
-    """class to thold a collection of Chebyshev Rational Approximations.
-
-    This class can hold a collection of CRAs to the exponential function on the
-    negative real axis, held in a CRA dataclass. It provides a
-    constructor, an append function and a dump to and real from file using the
-    dict representation of a dataclass.
-    """
-
-    def __init__(self, cras=None):
-        """Initialize a CRA collection using a list of CRA items.
-
-        Parameters
-        ----------
-        cras : :obj:`list` of :obj:`CRA`, optional
-            list of instances of CRA to be added to the collection at
-            its creation.
-        """
-        self._origins = dict()
-        self._orders = dict()
-        self.approx = list()
-
-        if cras:
-            if isinstance(cras, list):
-                for cra in cras:
-                    self.append(cra)
-            elif isinstance(cras, CRA):
-                self.append(cras)
-            else:
-                raise TypeError("CRAC requires CRA object or a list of CRA objects")
-
-    @property
-    def origins(self):
-        """list: Returns a list of the different CRA origins in the
-        collection."""
-        return list(self._origins.keys())
-
-    @property
-    def orders(self):
-        """list: Returns a list of the different CRA orders in the
-        collection."""
-        return list(self._orders.keys())
-
-    def append(self, cra):
-        """None: Appends a CRA to the collection."""
-        if isinstance(cra, CRA):
-            origin = cra.origin
-            order = cra.order
-
-            # Add the new cra to the approx list
-            self.approx.append(cra)
-
-            # Add the origin of the case to the dictionary, with link to the object
-            if origin in self._origins:
-                self._origins[origin].append(cra)
-            else:
-                self._origins[origin] = [cra]
-
-            # Add the order of the case to the dictionary, with link to the object
-            if order in self._orders:
-                self._orders[order].append(cra)
-            else:
-                self._orders[order] = [cra]
-
-        else:
-            raise TypeError("I can only handle objects of type CRA")
-
-    def __call__(self, origin, order):
-        """Function that returns a CRA from a certain origin and with a certain
-        order
-
-        Parameters
-        ----------
-        origin: str
-            name of the origin (like Pusa, Calvin)
-        order: int
-            order of the CRA
-
-        Returns
-        -------
-        Matching CRA
-        """
-
-        cras = self._origins[origin]
-
-        res = None
-        for cra in cras:
-            if cra.order == order:
-                res = cra
-                break
-
-        return res
-
-    def __len__(self):
-        """int: Return the number of items in the collection."""
-        return len(self.approx)
-
-    def tofile(self, fname, mode="w"):
-        """None: Dump the collection to a text file.
-
-        This function dumps the collection to a text file by converting the
-        dataclass CRA instances to a corresponding `dict`.
-
-        Parameters
-        ----------
-        fname: str
-            Filename for the output file.
-        mode: str, default 'w'
-            Single character string, either 'w' (default) or 'a'
-        """
-        modestr = mode + "t"
-        with open(fname, modestr) as fh:
-            for cra in self.approx:
-                fh.write(str(asdict(cra)) + "\n")
-
-    def fromstring(self, crastr):
-        """None: Read a collection from a text file.
-
-        This function reads a collection from a text file by converting the
-        dictionaries (separated by a newline) to instances of the dataclass
-        CRA.
-
-        Parameters
-        ----------
-        crastr: str
-            string containing dicts of the CRAs
-        """
-
-        cralist = re.findall(r"\{[^}]*\}", crastr)
-
-        for cra in cralist:
-            self.append(CRA(**eval(cra)))
-
-    def fromfile(self, fname):
-        """None: Read a collection from a text file.
-
-        This function reads a collection from a text file by converting the
-        dictionaries (separated by a newline) to instances of the dataclass
-        CRA.
-
-        Parameters
-        ----------
-        fname: str
-            Filename for the input file.
-        """
-        with open(fname, "rt") as fh:
-            crastrs = fh.read()
-            self.fromstring(crastrs)
-
-
-class CRA_literature:
-    """Class that only has a __call__ function to return the CRAs values from
-    literature.
-    """
-
-    def __init__(self):
-        cras_literature = CRAC()
-        crastr = pkg_resources.read_text(data, "cras_literature.dat")
-        cras_literature.fromstring(crastr)
-
-    def __call__(self):
-        return self.cras_literature
-
-
-# cra_literature = CRA_literature()()
