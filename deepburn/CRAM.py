@@ -379,6 +379,14 @@ class CRAC:
         """
         return [(a.origin, a.order) for a in self.approx]
 
+    def by_order(self, order):
+        """ Return list of all CRAs of certain order."""
+        return [a for a in self.approx if a.order==order]
+
+    def by_origin(self, origin):
+        """ Return list of all CRAs of certain origin."""
+        return [a for a in self.approx if a.origin==origin]
+
     def append(self, cra):
         """None: Appends a CRA to the collection."""
         if isinstance(cra, CRA):
