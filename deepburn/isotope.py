@@ -326,8 +326,8 @@ def _str2zzzaaam(name):
         aaa = int(match[1])
         m = len(match[2])
 
-        # If length of zzz is 2, we assume it is a symbol
-        if len(match[4]) == 2:
+        # If length of zzz is 1 or 2, we assume it is a symbol
+        if len(match[4]) == 1 or len(match[4]) == 2:
             try:
                 zzz = int(SYMBOLS.index(match[4]))
             except ValueError:
@@ -343,8 +343,8 @@ def _str2zzzaaam(name):
         aaa = int(match[3])
         m = len(match[4])
 
-        # If length of zzz is 2, we assume it is a symbol
-        if len(match[1]) == 2:
+        # If length of zzz is 1 or 2, we assume it is a symbol
+        if len(match[1]) == 1 or len(match[1]) == 2:
             try:
                 zzz = int(SYMBOLS.index(match[1]))
             except ValueError:
@@ -361,10 +361,13 @@ def _str2zzzaaam(name):
 class Isotope:
     """Class to hold isotope and pretty-printing"""
 
-    def __init__(self, zzz, aaa, meta):
-        self._zzz = zzz
-        self._aaa = aaa
-        self._meta = meta
+    def __init__(self, iso):
+        if isinstance(iso, str):
+            iso = _str2zzzaaam(iso)
+
+        self._zzz = iso[0]
+        self._aaa = iso[1]
+        self._meta = iso[2]
 
     @property
     def zzz(self):
