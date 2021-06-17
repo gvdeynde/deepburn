@@ -33,6 +33,11 @@ import re
 import importlib.resources as pkg_resources
 import mpmath as mp
 import numpy as np
+import scipy.sparse as sp
+import scipy.linalg as la
+from scipy.sparse import isspmatrix
+from scipy.sparse.sputils import is_pydata_spmatrix
+from scipy.sparse.linalg import spsolve
 from scipy.linalg import hankel
 from scipy.optimize import fsolve
 from . import data
@@ -62,7 +67,7 @@ class CRA:
     alpha: np.ndarray
     theta: np.ndarray
     _extrema: np.ndarray = field(init=False, repr=False, default=None)
-    _extremavals: np.ndarray = field(init=False, repr=False, default=None)
+    #_extremavals: np.ndarray = field(init=False, repr=False, default=None)
 
     def __call__(self, x, dps=None):
         """Evaluates the CRA in x.
@@ -83,7 +88,7 @@ class CRA:
         """
 
         if dps:
-            mpreal = np.vectorize(mp.re)
+            mpreal = np.vectorize(mp.re, otypes=[float])
 
             with mp.workdps(dps):
                 res = mp.mpc("0") * np.ones_like(x)
@@ -137,7 +142,7 @@ class CRA:
         """
 
         if dps:
-            mpreal = np.vectorize(mp.re)
+            mpreal = np.vectorize(mp.re, otypes=[float])
 
             with mp.workdps(dps):
                 res = mp.mpc("0") * np.ones_like(x)
@@ -221,7 +226,7 @@ class CRA:
 
         if dps:
             mpexp = np.vectorize(mp.exp)
-            mpre = np.vectorize(mp.re)
+            mpre = np.vectorize(mp.re, otypes=[float])
 
             with mp.workdps(dps):
                 errorderiv = mpre(self.derivative(x, dps) - mpexp(x))
@@ -255,29 +260,30 @@ class CRA:
         ndarray holding the extrema in double precision
         """
 
-        dps = 100  # 100 is rather arbitray but should be sufficient
+        dps = 400  # 100 is rather arbitray but should be sufficient
         with mp.workdps(dps):
             mppower = np.vectorize(mp.power)
-            tofloat = lambda x: np.array(x, dtype=float)
+            #tofloat = lambda x: np.array(x, dtype=float)
 
             # Step 1: initial guesses
-            startvals = -mppower(mp.mpf("10"), np.linspace(5, -5, 101))
-            sols = np.zeros_like(startvals, dtype=float)
-            for i, sv in enumerate(startvals):
-                sol = fsolve(
-                    lambda x: tofloat(self.errorderivative(x, dps)),
-                    float(sv),
-                    xtol=1e-5,
-                    maxfev=100,
-                )[0]
-                if sol > -10000:  # arbitrary boundary
-                    sols[i] = sol
+            # startvals = -mppower(mp.mpf("10"), np.linspace(4, -4, 1001))
+            # sols = np.zeros_like(startvals, dtype=float)
+            # for i, sv in enumerate(startvals):
+                # sol = fsolve(
+                    # lambda x: tofloat(self.errorderivative(x, dps)),
+                    # float(sv),
+                    # xtol=1e-3,
+                    # maxfev=400,
+                # )[0]
+                # if sol > -10000:  # arbitrary boundary
+                    # sols[i] = sol
 
             # Step 2: refine
-            startvalsmp = np.unique(sols.round(decimals=10))[:-1]
+            # startvalsmp = np.unique(sols.round(decimals=10))[:-1]
+            startvalsmp = -mppower(mp.mpf("10"), mp.linspace(4, -2, 5001))
 
-            tol = mp.mpf("1e-20")
-            delta = mp.mpf("2e-2")
+            tol = mp.mpf("1e-50")
+            delta = mp.mpf("1e-1")
             one = mp.mpf("1")
 
             extrema = []
@@ -304,7 +310,7 @@ class CRA:
             for ext in extrema:
                 present = False
                 for r in result:
-                    present = mp.almosteq(ext, r, rel_eps=mp.mpf("1e-14"))
+                    present = mp.almosteq(ext, r, rel_eps=mp.mpf("1e-12"))
                     if present:
                         break
                 if not present:
@@ -320,12 +326,7 @@ class CRA:
 
     @property
     def extremavals(self):
-        if self._extremavals is None:
-            self._extremavals = self.error(self.extrema)
-        return self._extremavals
-
-    def ODEsolver(A, t):
-        print("to implement")
+        return(self.error(self.extrema, 200))
 
 
 class CRAC:
@@ -511,6 +512,100 @@ class CRA_literature:
 cras_literature = CRA_literature()()
 
 
+class CRA_ODEsolver:
+    """ Class for CRA based ODE solver.
+
+    This class provides an interface to solve problems of the type
+    \\[\\frac{dN(t)}{dt} = AN(t), \\quad N(0) = N_0\\]
+
+    Options that can be chosen
+    - pure CRA
+    - Arnoldi reduction
+    - Spectral shift
+    - Scaling & squaring
+    """
+
+    def __init__(self, CRA=cras_literature("VandenEynde2021", 14)):
+        self._cra = CRA
+
+    def CRAsolve(self, A, N0):
+
+        # "Handling" code taken from scipy.sparse.linalg._expm
+        # Avoid indiscriminate asarray() to allow sparse or other strange arrays.
+        if isinstance(A, (list, tuple, np.matrix)):
+            A = np.asarray(A)
+        if len(A.shape) != 2 or A.shape[0] != A.shape[1]:
+            raise ValueError('expected a square matrix')
+
+        # gracefully handle size-0 input,
+        # carefully handling sparse scenario
+        if A.shape == (0, 0):
+            out = np.zeros([0, 0], dtype=A.dtype)
+            if isspmatrix(A) or is_pydata_spmatrix(A):
+                return A.__class__(out)
+            return out
+
+        # Trivial case
+        if A.shape == (1, 1):
+            out = [[np.exp(A[0, 0])]] * N0
+            # Avoid indiscriminate casting to ndarray to
+            # allow for sparse or other strange arrays
+            if isspmatrix(A) or is_pydata_spmatrix(A):
+                return A.__class__(out)
+            return np.array(out)
+
+        # Ensure input is of float type, to avoid integer overflows etc.
+        if ((isinstance(A, np.ndarray) or isspmatrix(A) or is_pydata_spmatrix(A))
+                and not np.issubdtype(A.dtype, np.inexact)):
+            A = A.astype(float)
+
+        # And here should come the template design pattern
+
+
+    def _solveCRA(self, A, N0):
+        """ Computes $\\exp(A) \\cdot N_{0}$ using the CRA method
+
+        It implements equation (10) from
+
+        Maria Pusa, "Rational Approximations to the Matrix Exponential
+        in Burnup Calculations", Nuclear Science and Engineering, 169,
+        p.155-167, 2011.
+
+        Parameters
+        ----------
+        A: ndarray, 2D, matrix can be dense or sparse, system matrix
+        N0: ndarray, 1D initial condition
+
+        Returns
+        -------
+        N: ndarray, 1D, result of solving the ODE problem
+        """
+        # Find out if A is sparse or dense
+        if isspmatrix(A):
+            # If matrix is sparse, use the sparse module from SciPy
+            eye = sp.eye
+            solve = sp.linalg.spsolve
+        else:
+            # If matrix is dense, use the linalg module from SciPy
+            eye = np.eye
+            solve = la.solve
+
+
+        # Get coefficients for the order requested
+        szi, szj = A.shape
+
+        N = self._cra.rinf * np.ones_like(N0, dtype=complex)
+        N *= N0
+        Z = np.zeros_like(N0, dtype=complex)
+
+        for alpha, theta in zip(self._cra.alpha, self._cra.theta):
+            B = A - eye(szi) * theta
+            Z += alpha * solve(B, N0)
+
+        N += 2.0 * Z
+
+        return N.real
+
 def _fft(yg, inverse=False):
     """
     Modified version from the apfft package:
@@ -650,9 +745,9 @@ def mpCaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
         return res
 
     mpexp = np.vectorize(mp.exp)
-    mpreal = np.vectorize(mp.re)
-    mpimag = np.vectorize(mp.im)
-    mpfabs = np.vectorize(mp.fabs)
+    mpreal = np.vectorize(mp.re, otypes=[float])
+    mpimag = np.vectorize(mp.im, otypes=[float])
+    mpfabs = np.vectorize(mp.fabs, otypes=[float])
     mppower = np.vectorize(mp.power)
 
     with mp.workdps(dps):
