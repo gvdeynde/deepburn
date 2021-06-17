@@ -357,17 +357,41 @@ def _str2zzzaaam(name):
 
     return (zzz, aaa, m)
 
-
 class Isotope:
     """Class to hold isotope and pretty-printing"""
 
     def __init__(self, iso):
         if isinstance(iso, str):
             iso = _str2zzzaaam(iso)
+        else:
+            if len(iso) < 2:
+                raise ValueError("I need at least proton and mass number")
+            if len(iso) < 3:
+                iso = (iso[0], iso[1], 0)
 
         self._zzz = iso[0]
         self._aaa = iso[1]
         self._meta = iso[2]
+
+    def __format__(self, code):
+        if code == '':
+            code = 'Sam'
+        
+        if code == 'zam':
+            res = f"{self._zzz}-{self._aaa}"
+        elif code == 'Eam':
+            res = f"{ELEMENTS[self._zzz]}-{self._aaa}"
+        elif code == 'Sam':
+            res = f"{SYMBOLS[self._zzz]}-{self._aaa}"
+        else:
+            raise ValueError("wrong format code")
+
+        if self._meta != 0:
+            res += 'm'
+        return res
+
+    def __str__(self):
+        return f"{self}"
 
     @property
     def zzz(self):
@@ -402,10 +426,6 @@ class Isotope:
     @property
     def name(self):
         zzzaaam = f"{self._zzz:3d}{self._aaa:3d}{self._meta:1d}"
-        print(self._zzz)
-        print(self._aaa)
-        print(self._meta)
-        print(zzzaaam)
         return _zzzaaam2str(zzzaaam)
 
     @name.setter

@@ -193,3 +193,17 @@ def test_Isotope_exceptions():
 
     with pytest.raises(ValueError):
         iso.name = "test"
+
+def test_Isotope_fmt():
+    iso = isotope.Isotope((54, 135))
+
+    assert f"{iso:zam}" == "54-135"
+    assert f"{iso:Sam}" == "Xe-135"
+    assert f"{iso:Eam}" == "Xenon-135"
+
+    iso = isotope.Isotope((95, 241, 1))
+
+    assert f"{iso:zam}" == "95-241m"
+    assert f"{iso:Sam}" == "Am-241m"
+    assert f"{iso:Eam}" == "Americium-241m"
+
