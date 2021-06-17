@@ -5,7 +5,7 @@
 import pytest
 from pytest import approx
 
-from deepburn.CRAM import CRA, CRAC
+from deepburn.CRAM import CRA, CRAC, cras_literature
 
 
 def test_CRA_init():
@@ -64,3 +64,11 @@ def test_CRAC_init_cras():
 
     assert set(col.origins) == set(["CFT", "Dummy"])
     assert set(col.orders) == set([3, 2])
+
+
+def test_CRA_from_literature():
+    cra = cras_literature("VandenEynde2021", 14)
+    assert cra.origin == "VandenEynde2021"
+    assert cra.order == 14
+    assert abs(cra.rinf) < 1e-5
+
