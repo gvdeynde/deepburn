@@ -357,6 +357,7 @@ def _str2zzzaaam(name):
 
     return (zzz, aaa, m)
 
+
 class Isotope:
     """Class to hold isotope and pretty-printing"""
 
@@ -374,53 +375,66 @@ class Isotope:
         self._meta = iso[2]
 
     def __format__(self, code):
-        if code == '':
-            code = 'Sam'
-        
-        if code == 'zam':
+        if code == "":
+            code = "Sam"
+
+        if code == "zam":
             res = f"{self._zzz}-{self._aaa}"
-        elif code == 'Eam':
+        elif code == "Eam":
             res = f"{ELEMENTS[self._zzz]}-{self._aaa}"
-        elif code == 'Sam':
+        elif code == "Sam":
             res = f"{SYMBOLS[self._zzz]}-{self._aaa}"
         else:
             raise ValueError("wrong format code")
 
         if self._meta != 0:
-            res += 'm'
+            res += "m"
         return res
 
     def __str__(self):
         return f"{self}"
 
+    def __eq__(self, other):
+        return (
+            self._zzz == other._zzz
+            and self._aaa == other._aaa
+            and self._meta == other._meta
+        )
+
+    def __lt__(self, other):
+        ord1 = self._zzz*10000 + self._aaa*10 + self._meta
+        ord2 = other._zzz*10000 + other._aaa*10 + other._meta
+
+        return ord1 < ord2
+
     @property
     def zzz(self):
-        """ Returns the proton number """
+        """Returns the proton number"""
         return self._zzz
 
     @zzz.setter
     def zzz(self, value):
-        """ Read-only property """
+        """Read-only property"""
         raise ValueError("'zzz' is a read-only property")
 
     @property
     def aaa(self):
-        """ Returns the proton number """
+        """Returns the proton number"""
         return self._aaa
 
     @aaa.setter
     def aaa(self, value):
-        """ Read-only property """
+        """Read-only property"""
         raise ValueError("'aaa' is a read-only property")
 
     @property
     def meta(self):
-        """ Returns the proton number """
+        """Returns the proton number"""
         return self._meta
 
     @meta.setter
     def meta(self, value):
-        """ Read-only property """
+        """Read-only property"""
         raise ValueError("'meta' is a read-only property")
 
     @property
@@ -430,5 +444,5 @@ class Isotope:
 
     @name.setter
     def name(self, value):
-        """ Read-only property """
+        """Read-only property"""
         raise ValueError("'name' is a read-only property")

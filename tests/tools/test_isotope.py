@@ -159,12 +159,14 @@ def test_Isotope_constructor():
     assert iso.aaa == 1
     assert iso.meta == 0
 
+
 def test_Isotope_constructorfromname():
     iso = isotope.Isotope("H1")
 
     assert iso.zzz == 1
     assert iso.aaa == 1
     assert iso.meta == 0
+
 
 def test_Isotope_constructorfromname():
     iso = isotope.Isotope("239mPu")
@@ -174,9 +176,19 @@ def test_Isotope_constructorfromname():
     assert iso.meta == 1
 
 
-def test_Isotope_namegenerator():
-    iso = isotope.Isotope((95, 241, 1))
-    assert iso.name == "Am-241m"
+@pytest.mark.parametrize(
+    "name, zzzaaam",
+    [
+        ("Am-241", (95, 241, 0)),
+        ("Am-241m", (95, 241, 1)),
+        ("Xe-135", (54, 135)),
+        ("H-1", (1, 1)),
+        ("Cf-252", (98, 252, 0)),
+    ],
+)
+def test_Isotope_namegenerator(name, zzzaaam):
+    iso = isotope.Isotope(zzzaaam)
+    assert iso.name == name
 
 
 def test_Isotope_exceptions():
@@ -194,6 +206,7 @@ def test_Isotope_exceptions():
     with pytest.raises(ValueError):
         iso.name = "test"
 
+
 def test_Isotope_fmt():
     iso = isotope.Isotope((54, 135))
 
@@ -207,3 +220,27 @@ def test_Isotope_fmt():
     assert f"{iso:Sam}" == "Am-241m"
     assert f"{iso:Eam}" == "Americium-241m"
 
+
+def test_Isotope_equality():
+    iso = isotope.Isotope((54, 135))
+    iso1 = isotope.Isotope((54, 135, 1))
+    iso2 = isotope.Isotope((54, 136))
+    iso3 = isotope.Isotope((52, 135))
+
+    assert iso == iso
+    assert iso != iso1
+    assert iso != iso2
+    assert iso != iso3
+
+@pytest.mark.parametrize(
+    "iso1, iso2, lt",
+    [
+        ((1, 1), (2, 4), True),
+        ((1, 1), (1, 1), False),
+        ((1, 1), (1, 2), True),
+        ((1, 1), (1, 1, 0), False),
+        ((1, 1), (1, 1, 1), True),
+    ],
+)
+def test_Isotope_inequality(iso1, iso2, lt):
+    assert((isotope.Isotope(iso1) < isotope.Isotope(iso2)) == lt)
