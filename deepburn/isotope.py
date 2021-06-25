@@ -124,7 +124,7 @@ SYMBOLS = [
 ]
 
 ELEMENTS = [
-    "Neutron",
+    "neutron",
     "Hydrogen",
     "Helium",
     "Lithium",
@@ -363,16 +363,18 @@ class Isotope:
 
     def __init__(self, iso):
         if isinstance(iso, str):
-            iso = _str2zzzaaam(iso)
+            isotope = _str2zzzaaam(iso)
         else:
             if len(iso) < 2:
                 raise ValueError("I need at least proton and mass number")
-            if len(iso) < 3:
-                iso = (iso[0], iso[1], 0)
+            elif len(iso) < 3:
+                isotope = (iso[0], iso[1], 0)
+            else:
+                isotope = iso
 
-        self._zzz = iso[0]
-        self._aaa = iso[1]
-        self._meta = iso[2]
+        self._zzz = isotope[0]
+        self._aaa = isotope[1]
+        self._meta = isotope[2]
 
     def __format__(self, code):
         if code == "":
@@ -391,8 +393,14 @@ class Isotope:
             res += "m"
         return res
 
+    def _ord(self):
+        return  self._zzz * 10000 + self._aaa * 10 + self._meta
+
     def __str__(self):
         return f"{self}"
+
+    def __repr__(self):
+        return f"{self._ord()}"
 
     def __eq__(self, other):
         return (
@@ -402,10 +410,10 @@ class Isotope:
         )
 
     def __lt__(self, other):
-        ord1 = self._zzz*10000 + self._aaa*10 + self._meta
-        ord2 = other._zzz*10000 + other._aaa*10 + other._meta
+        return self._ord() < other._ord()
 
-        return ord1 < ord2
+    def __hash__(self):
+        return self._ord()
 
     @property
     def zzz(self):
