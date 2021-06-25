@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from bisect import bisect
+from bisect import bisect_left
 import numpy as np
 from scipy.sparse import dok_matrix
 from .tools import lazyreadonlyproperty
@@ -34,12 +34,12 @@ class Transitions:
         dok = dok_matrix((problem_size, problem_size))
 
         for t in self._trans:
-            fromisoidx = bisect(t[0], isolist)
+            fromisoidx = bisect_left(isolist, t[0])
             dok[fromisoidx, fromisoidx] -= t[1]
 
             if t[2]:
-                toisoidx = bisect(t[2], isolist)
-                dok[fromisoidx, fromisoidx] += t[1]
+                toisoidx = bisect_left(isolist, t[2])
+                dok[toisoidx, fromisoidx] += t[1]
 
         return dok
 

@@ -1,5 +1,6 @@
 import pytest
 
+from numpy import allclose
 from scipy.sparse import dok_matrix
 from deepburn.isotope import Isotope
 from deepburn.burnup_problem import Transitions, BUP
@@ -71,5 +72,12 @@ def test_transition_full(Po210_example_trans):
 def test_transition_Podok(Po210_example_trans):
     iso, trans, transition = Po210_example_trans
 
-    dok = dok_matrix((4,4))
+    dok = dok_matrix((3,3))
+    dok[0,0] = -trans[0]
+    dok[1,0] = +trans[0]
+    dok[1,1] = -trans[1]
+    dok[2,1] = +trans[1]
+    dok[2,2] = -trans[2]
+
+    assert allclose(dok.A, transition.transition_matrix.A)
 
