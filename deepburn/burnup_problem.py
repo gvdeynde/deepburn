@@ -143,7 +143,7 @@ class BUP:
         """Sets the time stamps, ensuring sorted and uniqueness."""
         self._time_stamps = sorted(set(time_stamps))
 
-    def AddTimeStamps(self, time_stamps):
+    def add_time_stamps(self, time_stamps):
         """Add time stamps to the list if it is not yet present.
 
         Args:
@@ -166,7 +166,7 @@ class BUP:
 
             return position
 
-    def RemoveTimeStamps(self, time_stamps):
+    def remove_time_stamps(self, time_stamps):
         """Remove time stamp from the list based on value.
 
         Args:
@@ -175,7 +175,7 @@ class BUP:
         for time_stamp in time_stamps:
             self._time_stamps.remove(time_stamp)
 
-    def RemoveTimeStampsIdx(self, ts_indices):
+    def remove_time_stamps_idx(self, ts_indices):
         """Remove time stamp from the list based on index.
 
         Args:
@@ -184,7 +184,7 @@ class BUP:
         for idx in ts_indices:
             del self._time_stamps[idx]
 
-    def AddReferenceSolution(self, time, refsol):
+    def add_reference_solution(self, time, refsol):
         """Add a reference solution to the problem at a time stamp ``time''
 
         Args:
@@ -223,6 +223,9 @@ class BUP:
 
 
 def Polonium():
+    trans = Transitions()
+    trans.add_transition
+
     lbi209 = 1.83163e-12
     lbi210 = 1.60035e-6
     lpo210 = 5.79764e-8
