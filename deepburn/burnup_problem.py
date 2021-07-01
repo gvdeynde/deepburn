@@ -78,7 +78,7 @@ class BUP:
         initial_condition=None,
         isotopes=[],
         time_stamps=[],
-        refsols={},
+        ref_sols={},
         name="deepburn problem",
     ):
         """Initialize a BurnUpProblem"""
@@ -92,7 +92,7 @@ class BUP:
         else:
             inisize = initial_condition.shape
 
-        if inisize[0] != sizem or len(inisize)>1:
+        if inisize[0] != sizem or len(inisize) > 1:
             raise ValueError(
                 "Size of inital condition vector not compatible with system matrix size"
             )
@@ -101,16 +101,16 @@ class BUP:
 
         self._initial_condition = dok_matrix((inisize[0], 1), dtype=float)
         for i in range(inisize[0]):
-            self._initial_condition[i,0] = initial_condition[i]
+            self._initial_condition[i, 0] = initial_condition[i]
         self._initial_condition.tocsr()
 
         self._isotopes = isotopes
         self._time_stamps = time_stamps
 
-        self._refsols = dict()
+        self._ref_sols = dict()
 
-        for reftime, refsol in refsols.items():
-            self.add_reference_solution(reftime, refsol)
+        for ref_time, ref_sol in ref_sols.items():
+            self.add_reference_solution(ref_time, ref_sol)
 
         self.name = name
 
@@ -121,7 +121,7 @@ class BUP:
         initial_condition=None,
         isotopes=[],
         time_stamps=[],
-        refsols={},
+        ref_sols={},
         name="deepburn problem",
     ):
         """Classmethod to convert a Transitions object to a matrix object"""
@@ -130,7 +130,7 @@ class BUP:
             initial_condition,
             isotopes,
             time_stamps,
-            refsols,
+            ref_sols,
             name,
         )
 
@@ -166,7 +166,7 @@ class BUP:
 
     @property
     def time_stamps(self):
-        """Returns a copy of the timestamps for inspection."""
+        """Returns a copy of the time_stamps for inspection."""
         return list(self._time_stamps)
 
     @time_stamps.setter
@@ -187,7 +187,7 @@ class BUP:
         for time_stamp in time_stamps:
             position = None
             idx = bisect_left(self._time_stamps, time_stamp)
-            if (self._time_stamps[idx] != time_stamp):
+            if self._time_stamps[idx] != time_stamp:
                 self._time_stamps.insert(idx, time_stamp)
         return idx
 
@@ -209,18 +209,18 @@ class BUP:
         for idx in ts_indices:
             del self._time_stamps[idx]
 
-    def add_reference_solution(self, time, refsol):
+    def add_reference_solution(self, time, ref_sol):
         """Add a reference solution to the problem at a time stamp ``time''
 
         Args:
             time (float): time at which the reference solution is valid
-            refsol (numpy array or list): array containing the reference
+            ref_sol (numpy array or list): array containing the reference
             solution
         """
 
-        sz = refsol.shape
+        sz = ref_sol.shape
 
-        if sz[0] != self.size or len(sz)>1:
+        if sz[0] != self.size or len(sz) > 1:
             raise ValueError(
                 f"Reference solution should have same dimensions as"
                 f"problem size. Got {szi} x {szj}."
@@ -229,14 +229,14 @@ class BUP:
 
         idx = self.add_time_stamps([time])
 
-        self._refsols[idx] = np.asarray(refsol)
+        self._ref_sols[idx] = np.asarray(ref_sol)
 
     @property
-    def refsols(self):
-        return self._refsols
+    def ref_sols(self):
+        return self._ref_sols
 
-    @refsols.setter
-    def refsols(self, refsols):
+    @ref_sols.setter
+    def ref_sols(self, ref_sols):
         raise ValueError("Read only property. Use methods")
 
     @property
@@ -257,6 +257,25 @@ class BUP:
 
         self._isotopes = list(isotopes)
 
+    def __str__(self):
+        res = self.name + "\n"
+        res += "Isotopes: "
+        for iso in self._isotopes:
+            res += f"{iso} "
+        res += "\nTransition matrix\n"
+        res += f"{self._matrix}"
+        res += "\nInitial condition\n"
+        res += f"{self._initial_condition}"
+        res += "\nTime stamps\n"
+        for idx, time in enumerate(self._time_stamps):
+            res += f"{time}"
+            if idx in self._ref_sols.keys():
+                res += f"    {self._ref_sols[idx]}"
+            else:
+                res += "     No reference solution provided"
+            res += "\n"
+        return res
+
 
 def Polonium():
     isotopes = [Isotope("Bi209"), Isotope("Bi210"), Isotope("Po210")]
@@ -266,9 +285,9 @@ def Polonium():
     trans.add_transition(isotopes[2], 5.79764e-8)
 
     N0 = [6.95896e-4, 0, 0]
-    t = [20*24*3600, 180 * 24 * 3600]
+    t = [20 * 24 * 3600, 180 * 24 * 3600]
 
-    refsols = {
+    ref_sols = {
         90
         * 24
         * 3600: np.array(
@@ -281,6 +300,6 @@ def Polonium():
         ),
     }
 
-    pol = BUP.fromTransitions(trans, N0, isotopes, t, refsols, "Po210")
+    pol = BUP.fromTransitions(trans, N0, isotopes, t, ref_sols, "Po210")
 
     return pol
