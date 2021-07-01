@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from bisect import bisect_left
 import numpy as np
-from scipy.sparse import dok_matrix
+from scipy.sparse import dok_matrix, csr_matrix
 from .tools import lazyreadonlyproperty
 from deepburn.isotope import Isotope
 
@@ -27,7 +27,7 @@ class Transitions:
 
     @property
     def transition_matrix(self):
-        """Property that returns the transition matrix in dok_matrix format"""
+        """Property that returns the transition matrix in csr_matrix format"""
 
         problem_size = len(self._isotopes)
         isolist = sorted(list(self._isotopes))
@@ -41,7 +41,7 @@ class Transitions:
                 toisoidx = bisect_left(isolist, t[2])
                 dok[toisoidx, fromisoidx] += t[1]
 
-        return dok
+        return dok.tocsr()
 
     @transition_matrix.setter
     def transition_matrix(self):
@@ -87,20 +87,52 @@ class BUP:
         if sizem != sizen:
             raise ValueError("System matrix has to be square")
 
-        (inisize,) = initial_condition.shape
+        if isinstance(initial_condition, list):
+            inisize = (len(initial_condition),)
+        else:
+            inisize = initial_condition.shape
 
-        if inisize != sizem:
+        if inisize[0] != sizem or len(inisize)>1:
             raise ValueError(
                 "Size of inital condition vector not compatible with system matrix size"
             )
 
-        self._dok_matrix = matrix
-        self._initial_condition = initial_condition
+        self._matrix = matrix.tocsr()
+
+        self._initial_condition = dok_matrix((inisize[0], 1), dtype=float)
+        for i in range(inisize[0]):
+            self._initial_condition[i,0] = initial_condition[i]
+        self._initial_condition.tocsr()
 
         self._isotopes = isotopes
         self._time_stamps = time_stamps
-        self._refsols = {}
-        self._name = name
+
+        self._refsols = dict()
+
+        for reftime, refsol in refsols.items():
+            self.add_reference_solution(reftime, refsol)
+
+        self.name = name
+
+    @classmethod
+    def fromTransitions(
+        cls,
+        trans=None,
+        initial_condition=None,
+        isotopes=[],
+        time_stamps=[],
+        refsols={},
+        name="deepburn problem",
+    ):
+        """Classmethod to convert a Transitions object to a matrix object"""
+        return cls(
+            trans.transition_matrix,
+            initial_condition,
+            isotopes,
+            time_stamps,
+            refsols,
+            name,
+        )
 
     def __cal__(self, t, tol=1e-12):
         """Find a reference solution"""
@@ -108,7 +140,7 @@ class BUP:
     @property
     def size(self):
         """Returns the size of the problem matrix"""
-        (size,) = self.initial_condition.shape
+        size, x = self._initial_condition.shape
         return size
 
     @size.setter
@@ -117,8 +149,7 @@ class BUP:
 
     @property
     def sparsematrix(self):
-        cscmatrix = self.dok_matrix.tocsc()
-        return cscmatrix
+        return self._matrix
 
     @sparsematrix.setter
     def sparsematrix(self, dummy):
@@ -126,7 +157,7 @@ class BUP:
 
     @property
     def densematrix(self):
-        fullmatrix = self.dok_matrix.toarray()
+        fullmatrix = self._matrix.toarray()
         return fullmatrix
 
     @densematrix.setter
@@ -136,7 +167,7 @@ class BUP:
     @property
     def time_stamps(self):
         """Returns a copy of the timestamps for inspection."""
-        return list(self.time_stamps)
+        return list(self._time_stamps)
 
     @time_stamps.setter
     def time_stamps(self, time_stamps):
@@ -155,16 +186,10 @@ class BUP:
         """
         for time_stamp in time_stamps:
             position = None
-            idx = bisect(self._time_stamps, time_stamp)
-            try:
-                if self._time_stamps[idx] != time_stamp:
-                    self._time_stamps.insert(idx, time_stamp)
-                    position = idx
-            except ValueError:
+            idx = bisect_left(self._time_stamps, time_stamp)
+            if (self._time_stamps[idx] != time_stamp):
                 self._time_stamps.insert(idx, time_stamp)
-                position = idx
-
-            return position
+        return idx
 
     def remove_time_stamps(self, time_stamps):
         """Remove time stamp from the list based on value.
@@ -192,16 +217,27 @@ class BUP:
             refsol (numpy array or list): array containing the reference
             solution
         """
-        if len(refsol) != self.size:
+
+        sz = refsol.shape
+
+        if sz[0] != self.size or len(sz)>1:
             raise ValueError(
                 f"Reference solution should have same dimensions as"
-                f"problem size. Got {len(refsol)}."
+                f"problem size. Got {szi} x {szj}."
                 f"Expected {self.size}"
             )
 
-        idx = self.AddTimeStamps(time)
+        idx = self.add_time_stamps([time])
 
         self._refsols[idx] = np.asarray(refsol)
+
+    @property
+    def refsols(self):
+        return self._refsols
+
+    @refsols.setter
+    def refsols(self, refsols):
+        raise ValueError("Read only property. Use methods")
 
     @property
     def isotopes(self):
@@ -214,7 +250,7 @@ class BUP:
         Args:
             isoptopes (list of Isotopes): list of isotopes
         """
-        if len(isotopes) != self._size:
+        if len(isotopes) != self.size:
             raise ValueError(
                 f"Length of list of Isotopes ({len(isotopes)} is not conforming to the size of the burnup problem ({self._size})"
             )
@@ -223,16 +259,14 @@ class BUP:
 
 
 def Polonium():
+    isotopes = [Isotope("Bi209"), Isotope("Bi210"), Isotope("Po210")]
     trans = Transitions()
-    trans.add_transition
+    trans.add_transition(isotopes[0], 1.83163e-12, isotopes[1])
+    trans.add_transition(isotopes[1], 1.60035e-6, isotopes[2])
+    trans.add_transition(isotopes[2], 5.79764e-8)
 
-    lbi209 = 1.83163e-12
-    lbi210 = 1.60035e-6
-    lpo210 = 5.79764e-8
-
-    val = [-lbi209, lbi209, -lbi210, lbi210, -lpo210]
     N0 = [6.95896e-4, 0, 0]
-    t = [90 * 24 * 3600, 135 * 24 * 3600, 180 * 24 * 3600]
+    t = [20*24*3600, 180 * 24 * 3600]
 
     refsols = {
         90
@@ -247,9 +281,6 @@ def Polonium():
         ),
     }
 
-    isotopes = [Isotope("Bi209"), Isotope("Bi210"), Isotope("Po210")]
+    pol = BUP.fromTransitions(trans, N0, isotopes, t, refsols, "Po210")
 
-    pol = BurnUpProblem(
-        3, (iindex, jindex, val), N0, t, name="Polonium-210", refsols=refsols
-    )
     return pol
