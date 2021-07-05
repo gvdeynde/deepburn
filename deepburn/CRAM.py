@@ -600,7 +600,6 @@ class CRA_ODEsolver:
             B = A - eye * theta
             Z = alpha * solve(B, N0)
 
-            print(f"theta = {theta}")
             if np.abs(theta.imag) < 1e-20:
                 N += Z.real
             else:
