@@ -67,7 +67,7 @@ class CRA:
     alpha: np.ndarray
     theta: np.ndarray
     _extrema: np.ndarray = field(init=False, repr=False, default=None)
-    #_extremavals: np.ndarray = field(init=False, repr=False, default=None)
+    # _extremavals: np.ndarray = field(init=False, repr=False, default=None)
 
     def __call__(self, x, dps=None):
         """Evaluates the CRA in x.
@@ -263,20 +263,20 @@ class CRA:
         dps = 400  # 100 is rather arbitray but should be sufficient
         with mp.workdps(dps):
             mppower = np.vectorize(mp.power)
-            #tofloat = lambda x: np.array(x, dtype=float)
+            # tofloat = lambda x: np.array(x, dtype=float)
 
             # Step 1: initial guesses
             # startvals = -mppower(mp.mpf("10"), np.linspace(4, -4, 1001))
             # sols = np.zeros_like(startvals, dtype=float)
             # for i, sv in enumerate(startvals):
-                # sol = fsolve(
-                    # lambda x: tofloat(self.errorderivative(x, dps)),
-                    # float(sv),
-                    # xtol=1e-3,
-                    # maxfev=400,
-                # )[0]
-                # if sol > -10000:  # arbitrary boundary
-                    # sols[i] = sol
+            # sol = fsolve(
+            # lambda x: tofloat(self.errorderivative(x, dps)),
+            # float(sv),
+            # xtol=1e-3,
+            # maxfev=400,
+            # )[0]
+            # if sol > -10000:  # arbitrary boundary
+            # sols[i] = sol
 
             # Step 2: refine
             # startvalsmp = np.unique(sols.round(decimals=10))[:-1]
@@ -326,7 +326,7 @@ class CRA:
 
     @property
     def extremavals(self):
-        return(self.error(self.extrema, 200))
+        return self.error(self.extrema, 200)
 
 
 class CRAC:
@@ -381,12 +381,12 @@ class CRAC:
         return [(a.origin, a.order) for a in self.approx]
 
     def by_order(self, order):
-        """ Return list of all CRAs of certain order."""
-        return [a for a in self.approx if a.order==order]
+        """Return list of all CRAs of certain order."""
+        return [a for a in self.approx if a.order == order]
 
     def by_origin(self, origin):
-        """ Return list of all CRAs of certain origin."""
-        return [a for a in self.approx if a.origin==origin]
+        """Return list of all CRAs of certain origin."""
+        return [a for a in self.approx if a.origin == origin]
 
     def append(self, cra):
         """None: Appends a CRA to the collection."""
@@ -513,7 +513,7 @@ cras_literature = CRA_literature()()
 
 
 class CRA_ODEsolver:
-    """ Class for CRA based ODE solver.
+    """Class for CRA based ODE solver.
 
     This class provides an interface to solve problems of the type
     \\[\\frac{dN(t)}{dt} = AN(t), \\quad N(0) = N_0\\]
@@ -535,7 +535,7 @@ class CRA_ODEsolver:
         if isinstance(A, (list, tuple, np.matrix)):
             A = np.asarray(A)
         if len(A.shape) != 2 or A.shape[0] != A.shape[1]:
-            raise ValueError('expected a square matrix')
+            raise ValueError("expected a square matrix")
 
         # gracefully handle size-0 input,
         # carefully handling sparse scenario
@@ -555,15 +555,15 @@ class CRA_ODEsolver:
             return np.array(out)
 
         # Ensure input is of float type, to avoid integer overflows etc.
-        if ((isinstance(A, np.ndarray) or isspmatrix(A) or is_pydata_spmatrix(A))
-                and not np.issubdtype(A.dtype, np.inexact)):
+        if (
+            isinstance(A, np.ndarray) or isspmatrix(A) or is_pydata_spmatrix(A)
+        ) and not np.issubdtype(A.dtype, np.inexact):
             A = A.astype(float)
 
         # And here should come the template design pattern
 
-
     def _solveCRA(self, A, N0):
-        """ Computes $\\exp(A) \\cdot N_{0}$ using the CRA method
+        """Computes $\\exp(A) \\cdot N_{0}$ using the CRA method
 
         It implements equation (10) from
 
@@ -580,40 +580,34 @@ class CRA_ODEsolver:
         -------
         N: ndarray, 1D, result of solving the ODE problem
         """
-        # Find out if A is sparse or dense
-        if isspmatrix(A):
-            # If matrix is sparse, use the sparse module from SciPy
-            eye = sp.eye
-            solve = sp.linalg.spsolve
-        else:
-            # If matrix is dense, use the linalg module from SciPy
-            eye = np.eye
-            solve = la.solve
-
-
         # Get coefficients for the order requested
         szi, szj = A.shape
 
-        N = self._cra.rinf * np.ones_like(N0, dtype=complex)
+        # Find out if A is sparse or dense
+        if isspmatrix(A):
+            # If matrix is sparse, use the sparse module from SciPy
+            eye = sp.eye(szi)
+            solve = sp.linalg.spsolve
+        else:
+            # If matrix is dense, use the linalg module from SciPy
+            eye = np.eye(szi)
+            solve = la.solve
+
+        N = self._cra.rinf * np.ones_like(N0, dtype=float)
         N *= N0
 
-        Z = np.zeros_like(N0, dtype=complex)
-        print('Z')
-        print(Z.shape)
-
         for alpha, theta in zip(self._cra.alpha, self._cra.theta):
-            B = A - eye(szi) * theta
-            print('B')
-            print(solve)
-            print(type(B))
-            print(B.shape)
-            print(B)
-            print(type(solve(B,N0)))
-            Z += alpha * solve(B, N0)
+            B = A - eye * theta
+            Z = alpha * solve(B, N0)
 
-        N += 2.0 * Z
+            print(f"theta = {theta}")
+            if np.abs(theta.imag) < 1e-20:
+                N += Z.real
+            else:
+                N += 2 * Z.real
 
-        return N.real
+        return N
+
 
 def _fft(yg, inverse=False):
     """
