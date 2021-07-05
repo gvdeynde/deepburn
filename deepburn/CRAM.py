@@ -596,10 +596,19 @@ class CRA_ODEsolver:
 
         N = self._cra.rinf * np.ones_like(N0, dtype=complex)
         N *= N0
+
         Z = np.zeros_like(N0, dtype=complex)
+        print('Z')
+        print(Z.shape)
 
         for alpha, theta in zip(self._cra.alpha, self._cra.theta):
             B = A - eye(szi) * theta
+            print('B')
+            print(solve)
+            print(type(B))
+            print(B.shape)
+            print(B)
+            print(type(solve(B,N0)))
             Z += alpha * solve(B, N0)
 
         N += 2.0 * Z

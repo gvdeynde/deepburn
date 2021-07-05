@@ -88,21 +88,23 @@ class BUP:
             raise ValueError("System matrix has to be square")
 
         if isinstance(initial_condition, list):
-            inisize = (len(initial_condition),)
+            inisize = len(initial_condition)
         else:
-            inisize = initial_condition.shape
+            inisize = initial_condition.shape[0]
 
-        if inisize[0] != sizem or len(inisize) > 1:
+        if inisize != sizem:
             raise ValueError(
                 "Size of inital condition vector not compatible with system matrix size"
             )
 
         self._matrix = matrix.tocsr()
 
-        self._initial_condition = dok_matrix((inisize[0], 1), dtype=float)
-        for i in range(inisize[0]):
-            self._initial_condition[i, 0] = initial_condition[i]
-        self._initial_condition.tocsr()
+        self._initial_condition = np.array(initial_condition)
+
+        # self._initial_condition = dok_matrix((inisize[0], 1), dtype=float)
+        # for i in range(inisize[0]):
+            # self._initial_condition[i, 0] = initial_condition[i]
+        # self._initial_condition = self._initial_condition.tocsr()
 
         self._isotopes = isotopes
         self._time_stamps = time_stamps
@@ -140,12 +142,36 @@ class BUP:
     @property
     def size(self):
         """Returns the size of the problem matrix"""
-        size, x = self._initial_condition.shape
-        return size
+        return self._initial_condition.shape[0]
 
     @size.setter
     def size(self, newsize):
         raise ValueError("Sorry, read-only property")
+
+    @property
+    def initial_condition(self):
+        return self._initial_condition
+
+    @initial_condition.setter
+    def initial_condition(self, initial_condition):
+
+        if isinstance(initial_condition, list):
+            inisize = len(initial_condition)
+        else:
+            inisize = initial_condition.shape[0]
+
+        if inisize[0] != self.size:
+            raise ValueError(
+                "Size of inital condition vector not compatible with system matrix size"
+            )
+
+        self._initial_condition = np.array(initial_condition)
+
+        # self._initial_condition = dok_matrix((inisize[0], 1), dtype=float)
+        # for i in range(inisize[0]):
+            # self._initial_condition[i, 0] = initial_condition[i]
+        # self._initial_condition.tocsr()
+        return self
 
     @property
     def sparsematrix(self):
@@ -173,6 +199,7 @@ class BUP:
     def time_stamps(self, time_stamps):
         """Sets the time stamps, ensuring sorted and uniqueness."""
         self._time_stamps = sorted(set(time_stamps))
+        return self
 
     def add_time_stamps(self, time_stamps):
         """Add time stamps to the list if it is not yet present.
