@@ -34,6 +34,7 @@ class Transitions:
     def isotopes(self, dummy):
         raise ValueError("Read only value")
 
+
 class IsotopicComposition:
     """Object that holds an isotopic composition"""
 
@@ -139,9 +140,6 @@ class BUP:
         problem_size = len(trans.isotopes)
 
         permutation = np.argsort(trans.isotopes)
-        print("isotopes", trans.isotopes)
-        print("permut", permutation)
-        print("sorted iso", np.take(trans.isotopes, permutation).tolist())
         sorted_isotopes = np.take(trans.isotopes, permutation).tolist()
 
         dok = dok_matrix((problem_size, problem_size))
@@ -354,13 +352,13 @@ def Polonium():
     ICs.add_value(isotopes[0], 6.95896e-4)
 
     t = [20 * 24 * 3600, 180 * 24 * 3600]
-    rst = 180*24*3600
+    rst = 180 * 24 * 3600
     rs1 = IsotopicComposition()
     rs1.add_value(isotopes[0], 6.9587617733003087e-04)
     rs1.add_value(isotopes[1], 7.451824950503656e-09)
     rs1.add_value(isotopes[2], 1.2725788327617256e-08)
 
-    ref_sols={rst:rs1}
+    ref_sols = {rst: rs1}
 
     pol = BUP.fromTransitions(trans, ICs, t, ref_sols, "Po210")
 
@@ -393,20 +391,65 @@ def LagoRahnema_1():
             * (mp.exp(-lambda1 * mp.mpf("5e17")) - mp.exp(-lambda2 * mp.mpf("5e17")))
         )
 
-        # ODE
-        # sol = mp.odefun(lambda t,y: [-lambda1*y[0], +lambda1*y[0]
-        # - lambda2*y[1]], 0, [mp.mpf("1e10"), 0], tol=1e-20)
-
-        # Nt = sol(mp.mpf("5e17"))
-        # Nt1 = Nt[0]
-        # Nt2 = Nt[1]
-
         rs = IsotopicComposition()
         rs.add_value(isotopes[0], float(N1t))
         rs.add_value(isotopes[1], float(N2t))
 
-        ref_sols = { 5e17:rs }
+        ref_sols = {5e17: rs}
 
-    lago1 = BUP.fromTransitions(trans, ICs, t, ref_sols, "Lago & Rahnema 2017")
+    return BUP.fromTransitions(trans, ICs, t, ref_sols, "Lago & Rahnema #1 2017")
 
-    return lago1
+
+def LagoRahnema_2():
+    with mp.workdps(100):
+        isotopes = [Isotope("Np237"), Isotope("Pa233"), Isotope("U233")]
+
+        trans = Transitions()
+        lambda1 = mp.log(mp.mpf("2")) / mp.mpf("6.7659494310E+13")
+        lambda2 = mp.log(mp.mpf("2")) / mp.mpf("2.330640E+06")
+        lambda3 = mp.log(mp.mpf("2")) / mp.mpf("5.023969920E+12")
+
+        trans.add_transition(isotopes[0], lambda1, isotopes[1])
+        trans.add_transition(isotopes[1], lambda2, isotopes[2])
+        trans.add_transition(isotopes[2], lambda3)
+
+        ICs = IsotopicComposition()
+        ICs.add_value(isotopes[0], 1e12)
+
+        t = mp.mpf("1e12")
+
+        # Analyticak
+        N1t = mp.mpf("1e12") * mp.exp(-lambda1 * mp.mpf("1e12"))
+        N2t = (
+            -lambda1
+            * mp.mpf("1e12")
+            * (mp.exp(-lambda1 * t) - mp.exp(-lambda2 * t))
+            / (lambda1 - lambda2)
+        )
+
+        N3t = (
+            -mp.exp(-lambda3 * t)
+            * (
+                (-lambda2 + lambda3) * mp.exp(-t * (lambda1 - lambda3))
+                + (lambda1 - lambda3) * mp.exp(-t * (lambda2 - lambda3))
+                - lambda1
+                + lambda2
+            )
+            * mp.mpf("1e12")
+            * lambda2
+            * lambda1
+            / (lambda2 - lambda3)
+            / (lambda1 - lambda3)
+            / (lambda1 - lambda2)
+        )
+
+        rs = IsotopicComposition()
+        rs.add_value(isotopes[0], float(N1t))
+        rs.add_value(isotopes[1], float(N2t))
+        rs.add_value(isotopes[2], float(N3t))
+
+        ref_sols = {1e12: rs}
+
+    return BUP.fromTransitions(
+        trans, ICs, [float(t)], ref_sols, "Lago & Rahnema #2 2017"
+    )
