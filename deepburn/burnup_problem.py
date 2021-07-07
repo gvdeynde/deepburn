@@ -1,52 +1,57 @@
 # -*- coding: utf-8 -*-
 from bisect import bisect_left
 import numpy as np
+import mpmath as mp
 from scipy.sparse import dok_matrix, csr_matrix
 from .tools import lazyreadonlyproperty
 from deepburn.isotope import Isotope
 
 
 class Transitions:
-    """Object that holds all transitions.
-    Generates a transition matrix for use in a BurnUpProblem
-    """
+    """Object that holds a list of isotopic transitions."""
 
     def __init__(self):
         self._trans = list()
         self._isotopes = set()
 
     def add_transition(self, fromiso, rate, toiso=None):
-        self._isotopes = self._isotopes.union({fromiso})
+        self._trans.append((fromiso, rate, toiso))
+        self._isotopes.add(fromiso)
 
         if toiso:
-            self._isotopes = self._isotopes.union({toiso})
-
-        self._trans.append((fromiso, rate, toiso))
+            self._isotopes.add(toiso)
 
         return self
 
+    def __call__(self):
+        return self._trans
+
     @property
-    def transition_matrix(self):
-        """Property that returns the transition matrix in csr_matrix format"""
+    def isotopes(self):
+        return list(self._isotopes)
 
-        problem_size = len(self._isotopes)
-        isolist = sorted(list(self._isotopes))
-        dok = dok_matrix((problem_size, problem_size))
+    @isotopes.setter
+    def isotopes(self, dummy):
+        raise ValueError("Read only value")
 
-        for t in self._trans:
-            fromisoidx = bisect_left(isolist, t[0])
-            dok[fromisoidx, fromisoidx] -= t[1]
+class IsotopicComposition:
+    """Object that holds an isotopic composition"""
 
-            if t[2]:
-                toisoidx = bisect_left(isolist, t[2])
-                dok[toisoidx, fromisoidx] += t[1]
+    def __init__(self):
+        self._ics = dict()
 
-        return dok.tocsr()
+    def add_value(self, iso, value):
+        self._ics[iso] = value
+        return self
 
-    @transition_matrix.setter
-    def transition_matrix(self):
-        """Read-only property"""
-        raise ValueError("transition_matrix is a readonly property")
+    def __call__(self, isotope_list):
+        ics = np.zeros_like(isotope_list, dtype=float)
+
+        for ic_iso, ic_value in self._ics.items():
+            idx = isotope_list.index(ic_iso)
+            ics[idx] = ic_value
+
+        return ics
 
 
 class BUP:
@@ -94,7 +99,7 @@ class BUP:
 
         if inisize != sizem:
             raise ValueError(
-                "Size of inital condition vector not compatible with system matrix size"
+                "Size of initial condition vector not compatible with system matrix size"
             )
 
         self._matrix = matrix.tocsr()
@@ -103,7 +108,7 @@ class BUP:
 
         # self._initial_condition = dok_matrix((inisize[0], 1), dtype=float)
         # for i in range(inisize[0]):
-            # self._initial_condition[i, 0] = initial_condition[i]
+        # self._initial_condition[i, 0] = initial_condition[i]
         # self._initial_condition = self._initial_condition.tocsr()
 
         self._isotopes = isotopes
@@ -121,23 +126,53 @@ class BUP:
         cls,
         trans=None,
         initial_condition=None,
-        isotopes=[],
         time_stamps=[],
         ref_sols={},
         name="deepburn problem",
     ):
-        """Classmethod to convert a Transitions object to a matrix object"""
+        """Classmethod to create a BUP from a set of transitions and initial
+        conditions.
+        Reorders the isotopes in increasing order and reorders the initial
+        condition accordingly.
+        """
+
+        problem_size = len(trans.isotopes)
+
+        permutation = np.argsort(trans.isotopes)
+        print("isotopes", trans.isotopes)
+        print("permut", permutation)
+        print("sorted iso", np.take(trans.isotopes, permutation).tolist())
+        sorted_isotopes = np.take(trans.isotopes, permutation).tolist()
+
+        dok = dok_matrix((problem_size, problem_size))
+
+        for t in trans():
+            fromisoidx = bisect_left(sorted_isotopes, t[0])
+            dok[fromisoidx, fromisoidx] -= t[1]
+
+            if t[2]:
+                toisoidx = bisect_left(sorted_isotopes, t[2])
+                dok[toisoidx, fromisoidx] += t[1]
+
+        matrix = dok.tocsr()
+
+        sorted_initial_condition = initial_condition(sorted_isotopes)
+
+        for timestamp, isocomp in ref_sols.items():
+            ref_sols[timestamp] = isocomp(sorted_isotopes)
+
         return cls(
-            trans.transition_matrix,
-            initial_condition,
-            isotopes,
+            matrix,
+            sorted_initial_condition,
+            sorted_isotopes,
             time_stamps,
             ref_sols,
             name,
         )
 
-    def __cal__(self, t, tol=1e-12):
+    def __call__(self, t, tol=1e-12):
         """Find a reference solution"""
+        raise ValueError("Not implemented")
 
     @property
     def size(self):
@@ -169,7 +204,7 @@ class BUP:
 
         # self._initial_condition = dok_matrix((inisize[0], 1), dtype=float)
         # for i in range(inisize[0]):
-            # self._initial_condition[i, 0] = initial_condition[i]
+        # self._initial_condition[i, 0] = initial_condition[i]
         # self._initial_condition.tocsr()
         return self
 
@@ -256,7 +291,7 @@ class BUP:
 
         idx = self.add_time_stamps([time])
 
-        self._ref_sols[idx] = np.asarray(ref_sol)
+        self._ref_sols[idx] = ref_sol
 
     @property
     def ref_sols(self):
@@ -272,17 +307,20 @@ class BUP:
 
     @isotopes.setter
     def isotopes(self, isotopes):
-        """Add a list of Isotopes for pretty printing and interpretation
+        # """Add a list of Isotopes for pretty printing and interpretation
 
-        Args:
-            isoptopes (list of Isotopes): list of isotopes
-        """
-        if len(isotopes) != self.size:
-            raise ValueError(
-                f"Length of list of Isotopes ({len(isotopes)} is not conforming to the size of the burnup problem ({self._size})"
-            )
+        # Args:
+        # isoptopes (list of Isotopes): list of isotopes
+        # """
+        # if len(isotopes) != self.size:
+        # raise ValueError(
+        # f"Length of list of Isotopes ({len(isotopes)} is not conforming to the size of the burnup problem ({self._size})"
+        # )
 
-        self._isotopes = list(isotopes)
+        # self._isotopes = list(isotopes)
+        raise ValueError(
+            "Read-only property! Isotopes should be set at object construction"
+        )
 
     def __str__(self):
         res = self.name + "\n"
@@ -306,27 +344,69 @@ class BUP:
 
 def Polonium():
     isotopes = [Isotope("Bi209"), Isotope("Bi210"), Isotope("Po210")]
+
     trans = Transitions()
     trans.add_transition(isotopes[0], 1.83163e-12, isotopes[1])
     trans.add_transition(isotopes[1], 1.60035e-6, isotopes[2])
     trans.add_transition(isotopes[2], 5.79764e-8)
 
-    N0 = [6.95896e-4, 0, 0]
+    ICs = IsotopicComposition()
+    ICs.add_value(isotopes[0], 6.95896e-4)
+
     t = [20 * 24 * 3600, 180 * 24 * 3600]
+    rst = 180*24*3600
+    rs1 = IsotopicComposition()
+    rs1.add_value(isotopes[0], 6.9587617733003087e-04)
+    rs1.add_value(isotopes[1], 7.451824950503656e-09)
+    rs1.add_value(isotopes[2], 1.2725788327617256e-08)
 
-    ref_sols = {
-        90
-        * 24
-        * 3600: np.array(
-            [6.958860885944331e-04, 7.964521968307441e-10, 7.9644399128560947e-10]
-        ),
-        180
-        * 24
-        * 3600: np.array(
-            [6.9587617733003087e-04, 7.451824950503656e-09, 1.2725788327617256e-08]
-        ),
-    }
+    ref_sols={rst:rs1}
 
-    pol = BUP.fromTransitions(trans, N0, isotopes, t, ref_sols, "Po210")
+    pol = BUP.fromTransitions(trans, ICs, t, ref_sols, "Po210")
 
     return pol
+
+
+def LagoRahnema_1():
+    with mp.workdps(100):
+        isotopes = [Isotope("U238"), Isotope("Th-234")]
+
+        trans = Transitions()
+
+        lambda1 = mp.log(mp.mpf("2")) / mp.mpf("1.4099935680e+17")
+        lambda2 = mp.log(mp.mpf("2")) / mp.mpf("2.082240e+06")
+
+        trans.add_transition(isotopes[0], float(lambda1), isotopes[1])
+        trans.add_transition(isotopes[1], float(lambda2))
+
+        ICs = IsotopicComposition()
+        ICs.add_value(isotopes[0], 1e10)
+
+        t = [5e17]
+
+        # Analytical
+        N1t = mp.mpf("1e10") * mp.exp(-lambda1 * mp.mpf("5e17"))
+        N2t = (
+            lambda1
+            / (lambda2 - lambda1)
+            * mp.mpf("1e10")
+            * (mp.exp(-lambda1 * mp.mpf("5e17")) - mp.exp(-lambda2 * mp.mpf("5e17")))
+        )
+
+        # ODE
+        # sol = mp.odefun(lambda t,y: [-lambda1*y[0], +lambda1*y[0]
+        # - lambda2*y[1]], 0, [mp.mpf("1e10"), 0], tol=1e-20)
+
+        # Nt = sol(mp.mpf("5e17"))
+        # Nt1 = Nt[0]
+        # Nt2 = Nt[1]
+
+        rs = IsotopicComposition()
+        rs.add_value(isotopes[0], float(N1t))
+        rs.add_value(isotopes[1], float(N2t))
+
+        ref_sols = { 5e17:rs }
+
+    lago1 = BUP.fromTransitions(trans, ICs, t, ref_sols, "Lago & Rahnema 2017")
+
+    return lago1
