@@ -42,6 +42,12 @@ from scipy.linalg import hankel
 from scipy.optimize import fsolve
 from . import data
 
+def _tocomplex(x):
+    return np.array(x, dtype=complex)
+
+
+def _tofloat(x):
+    return np.array(x, dtype=float)
 
 @dataclass
 class CRA:
@@ -260,7 +266,7 @@ class CRA:
         ndarray holding the extrema in double precision
         """
 
-        dps = 400  # 100 is rather arbitray but should be sufficient
+        dps = 400  # 400 is rather arbitray but should be sufficient
         with mp.workdps(dps):
             mppower = np.vectorize(mp.power)
             # tofloat = lambda x: np.array(x, dtype=float)
@@ -282,7 +288,7 @@ class CRA:
             # startvalsmp = np.unique(sols.round(decimals=10))[:-1]
             startvalsmp = -mppower(mp.mpf("10"), mp.linspace(4, -2, 5001))
 
-            tol = mp.mpf("1e-50")
+            tol = mp.mpf("1e-30")
             delta = mp.mpf("1e-1")
             one = mp.mpf("1")
 
@@ -310,7 +316,7 @@ class CRA:
             for ext in extrema:
                 present = False
                 for r in result:
-                    present = mp.almosteq(ext, r, rel_eps=mp.mpf("1e-12"))
+                    present = mp.almosteq(ext, r, rel_eps=mp.mpf("1e-3"))
                     if present:
                         break
                 if not present:
@@ -326,7 +332,7 @@ class CRA:
 
     @property
     def extremavals(self):
-        return self.error(self.extrema, 200)
+        return _tofloat(self.error(self.extrema, 400))
 
 
 class CRAC:
@@ -561,6 +567,7 @@ class CRA_ODEsolver:
             A = A.astype(float)
 
         # And here should come the template design pattern
+        raise ValueError("Not implemented yet")
 
     def _solveCRA(self, A, N0):
         """Computes $\\exp(A) \\cdot N_{0}$ using the CRA method
@@ -689,9 +696,6 @@ def CaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
         Asymptotic error of the approximation
     """
 
-    def _tocomplex(x):
-        return np.array(x, dtype=complex)
-
     with mp.workdps(dps):
         zk, ck, rinf = mpCaratheodoryFejer(n, verbose, dps, K, nf)
         zk = _tocomplex(zk)
@@ -707,12 +711,15 @@ def mpCaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
 
     This function calculations the best rational approximation to exp(x) on the
     negative real axis in arbitrary precision and returns the result in partial
-    fraction decompostion in double precision.
+    fraction decompostion.
 
     The algorithm is a Python implementation in arbitrary precision of the MATLAB
     script given in
 
-    T. Schmelzer and L. N. Trefethen, “Evaluating matrix functions for exponential integrators via Carathéodory–Fejér approximation and contour integrals,” Electronic Transactions on Numerical Analysis, vol. 29, pp. 1–18, 2007.
+    T. Schmelzer and L. N. Trefethen, “Evaluating matrix functions for
+    exponential integrators via Carathéodory–Fejér approximation and contour
+    integrals,” Electronic Transactions on Numerical Analysis, vol. 29, pp.
+    1–18, 2007.
 
     Parameters
     ----------
@@ -789,13 +796,13 @@ def mpCaratheodoryFejer(n, verbose=False, dps=30, K=75, nf=1024):
         pt = rt * polyval(qc, w)
         ptc1 = mpreal(_fft(pt) / nf)
         ptc = ptc1[n::-1]
-        ck = 0 * qk
+        ck = mp.mpc("0") * qk
         if verbose:
             print("6. Start poles/residu")
         for k in range(n):
             q = qk[k]
             q2 = np.poly(qk[qk != q])
-            ck[k] = np.polyval(ptc, q) / polyval(q2, q)
+            ck[k] = polyval(ptc, q) / polyval(q2, q)
         zk = scale * (qk - one) ** 2.0 / (qk + one) ** 2
         ck = mp.mpf("4") * ck * zk / (qk ** 2 - one)
         idx = np.argsort(mpimag(zk))
